@@ -52,8 +52,8 @@ class CasinoActivity final : public Activity {
     const char* description;
     uint8_t numSymbols;
     SlotSymbolSet symbols;
-    int8_t twoMatchMult;   // payout for 2-of-a-kind (0 = none)
-    uint8_t wildSymbolIdx; // 0xFF = no wild
+    int8_t twoMatchMult;    // payout for 2-of-a-kind (0 = none)
+    uint8_t wildSymbolIdx;  // 0xFF = no wild
     bool hasFreeSpin;
     bool hasHoldReel;
     int16_t minBet;
@@ -111,11 +111,14 @@ class CasinoActivity final : public Activity {
   enum BJState { BJ_BET, BJ_PLAYING, BJ_DEALER, BJ_RESULT };
   BJState bjState = BJ_BET;
 
-  struct Card { uint8_t rank; uint8_t suit; };  // rank 1-13, suit 0-3
+  struct Card {
+    uint8_t rank;
+    uint8_t suit;
+  };  // rank 1-13, suit 0-3
   static constexpr const char* SUIT_CHARS[] = {"S", "H", "D", "C"};
   static constexpr const char* RANK_CHARS[] = {"", "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"};
 
-  Card deck[52];
+  Card deck[52] = {};
   int deckPos = 0;
   std::vector<Card> playerHand;
   std::vector<Card> dealerHand;
@@ -149,8 +152,8 @@ class CasinoActivity final : public Activity {
   // ============ HIGHER / LOWER ============
   enum HLState { HL_BET, HL_PLAYING, HL_RESULT };
   HLState hlState = HL_BET;
-  Card hlCurrentCard;
-  Card hlNextCard;
+  Card hlCurrentCard = {};
+  Card hlNextCard = {};
   int hlStreak = 0;
   int hlPot = 0;
 
@@ -177,7 +180,10 @@ class CasinoActivity final : public Activity {
   void rlSpin();
   void rlRender();
 
-  void resetCredits() { credits = 1000; saveCredits(); }
+  void resetCredits() {
+    credits = 1000;
+    saveCredits();
+  }
 
   // ---- rendering helpers ----
   void renderLobby();

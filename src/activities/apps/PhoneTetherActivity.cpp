@@ -1,10 +1,8 @@
 #include "PhoneTetherActivity.h"
 
-#include <BLEAdvertisedDevice.h>
-#include <BLEDevice.h>
-#include <BLEScan.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <NimBLEDevice.h>
 #include <strings.h>  // strncasecmp
 
 #include "MappedInputManager.h"
@@ -62,14 +60,13 @@ void PhoneTetherActivity::saveConfig() {
 void PhoneTetherActivity::parseMacBytes() {
   // Parse "AA:BB:CC:DD:EE:FF" into macBytes[6]
   unsigned int b[6] = {};
-  sscanf(targetMac, "%02x:%02x:%02x:%02x:%02x:%02x",
-         &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]);
+  sscanf(targetMac, "%02x:%02x:%02x:%02x:%02x:%02x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]);
   for (int i = 0; i < 6; i++) macBytes[i] = static_cast<uint8_t>(b[i]);
 }
 
 void PhoneTetherActivity::buildMacString() {
-  snprintf(targetMac, sizeof(targetMac), "%02X:%02X:%02X:%02X:%02X:%02X",
-           macBytes[0], macBytes[1], macBytes[2], macBytes[3], macBytes[4], macBytes[5]);
+  snprintf(targetMac, sizeof(targetMac), "%02X:%02X:%02X:%02X:%02X:%02X", macBytes[0], macBytes[1], macBytes[2],
+           macBytes[3], macBytes[4], macBytes[5]);
 }
 
 // ----------------------------------------------------------------
@@ -88,33 +85,32 @@ void PhoneTetherActivity::pushRssiHistory(int8_t rssi) {
 
 void PhoneTetherActivity::startBleScan() {
   if (!scanInitialized) return;
-  BLEScan* scan = BLEDevice::getScan();
+  NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setActiveScan(true);
   scan->setInterval(100);
   scan->setWindow(99);
   scan->clearResults();
-  scan->start(0, nullptr, true);  // non-blocking, continuous
+  scan->start(0, false, true);  // non-blocking, continuous
   lastScanTime = millis();
 }
 
 void PhoneTetherActivity::processScanResults() {
-  BLEScan* scan = BLEDevice::getScan();
-  BLEScanResults* results = scan->getResults();
-  if (!results) return;
+  NimBLEScan* scan = NimBLEDevice::getScan();
+  NimBLEScanResults results = scan->getResults();
 
-  const int count = results->getCount();
+  const int count = results.getCount();
   const unsigned long now = millis();
 
   for (int i = 0; i < count; i++) {
-    BLEAdvertisedDevice dev = results->getDevice(i);
-    String devMacArduino = dev.getAddress().toString();
-    const char* devMacStr = devMacArduino.c_str();
+    const NimBLEAdvertisedDevice* dev = results.getDevice(i);
+    std::string devMacStd = dev->getAddress().toString();
+    const char* devMacStr = devMacStd.c_str();
     if (strncasecmp(devMacStr, targetMac, 17) == 0) {
       targetFound = true;
-      currentRssi = static_cast<int8_t>(dev.getRSSI());
+      currentRssi = static_cast<int8_t>(dev->getRSSI());
       lastSeenTime = now;
-      if (dev.haveName()) {
-        strncpy(targetName, dev.getName().c_str(), sizeof(targetName) - 1);
+      if (dev->haveName()) {
+        strncpy(targetName, dev->getName().c_str(), sizeof(targetName) - 1);
         targetName[sizeof(targetName) - 1] = '\0';
       }
       pushRssiHistory(currentRssi);
@@ -125,7 +121,7 @@ void PhoneTetherActivity::processScanResults() {
   scan->clearResults();
   // Restart scan immediately
   lastScanTime = now;
-  scan->start(0, nullptr, true);
+  scan->start(0, false, true);
 }
 
 // ----------------------------------------------------------------
@@ -143,7 +139,7 @@ void PhoneTetherActivity::onEnter() {
 void PhoneTetherActivity::onExit() {
   Activity::onExit();
   if (scanInitialized) {
-    BLEScan* scan = BLEDevice::getScan();
+    NimBLEScan* scan = NimBLEDevice::getScan();
     scan->stop();
     scanInitialized = false;
     RADIO.shutdown();
@@ -249,7 +245,7 @@ void PhoneTetherActivity::loop() {
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
       // Stop scan, go back to config
       if (scanInitialized) {
-        BLEScan* scan = BLEDevice::getScan();
+        NimBLEScan* scan = NimBLEDevice::getScan();
         scan->stop();
         scanInitialized = false;
         RADIO.shutdown();
@@ -262,7 +258,7 @@ void PhoneTetherActivity::loop() {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       // Go back to config without stopping — user can reconfigure
       if (scanInitialized) {
-        BLEScan* scan = BLEDevice::getScan();
+        NimBLEScan* scan = NimBLEDevice::getScan();
         scan->stop();
         scanInitialized = false;
         RADIO.shutdown();
@@ -276,14 +272,13 @@ void PhoneTetherActivity::loop() {
 
   // ALERT state — any button returns to MONITORING
   if (state == ALERT) {
-    bool anyPressed =
-        mappedInput.wasReleased(MappedInputManager::Button::Back) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Down) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Left) ||
-        mappedInput.wasReleased(MappedInputManager::Button::Right) ||
-        mappedInput.wasReleased(MappedInputManager::Button::PageForward);
+    bool anyPressed = mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+                      mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+                      mappedInput.wasReleased(MappedInputManager::Button::Up) ||
+                      mappedInput.wasReleased(MappedInputManager::Button::Down) ||
+                      mappedInput.wasReleased(MappedInputManager::Button::Left) ||
+                      mappedInput.wasReleased(MappedInputManager::Button::Right) ||
+                      mappedInput.wasReleased(MappedInputManager::Button::PageForward);
     if (anyPressed) {
       // Reset last-seen so we give it another LOST_TIMEOUT window
       lastSeenTime = millis();
@@ -300,9 +295,15 @@ void PhoneTetherActivity::loop() {
 void PhoneTetherActivity::render(RenderLock&&) {
   renderer.clearScreen();
   switch (state) {
-    case CONFIG:     renderConfig();     break;
-    case MONITORING: renderMonitoring(); break;
-    case ALERT:      renderAlert();      break;
+    case CONFIG:
+      renderConfig();
+      break;
+    case MONITORING:
+      renderMonitoring();
+      break;
+    case ALERT:
+      renderAlert();
+      break;
   }
   renderer.displayBuffer();
 }
@@ -311,8 +312,7 @@ void PhoneTetherActivity::renderConfig() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Phone Tether");
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Phone Tether");
 
   int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 10;
 
@@ -393,25 +393,25 @@ void PhoneTetherActivity::renderMonitoring() const {
   const auto pageHeight = renderer.getScreenHeight();
 
   if (needsInit) {
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                   "Phone Tether");
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Phone Tether");
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Starting BLE...");
     return;
   }
 
   // Determine status
   const unsigned long now = millis();
-  const bool lost = (lastSeenTime == 0) ||
-                    ((now - lastSeenTime) > LOST_TIMEOUT_MS);
+  const bool lost = (lastSeenTime == 0) || ((now - lastSeenTime) > LOST_TIMEOUT_MS);
   const bool weak = !lost && targetFound && (currentRssi < rssiThreshold);
 
   const char* statusStr;
-  if (lost) statusStr = "LOST";
-  else if (weak) statusStr = "WEAK";
-  else statusStr = "IN RANGE";
+  if (lost)
+    statusStr = "LOST";
+  else if (weak)
+    statusStr = "WEAK";
+  else
+    statusStr = "IN RANGE";
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Phone Tether", statusStr);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Phone Tether", statusStr);
 
   int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 8;
   const int lineH = renderer.getTextHeight(UI_10_FONT_ID) + 6;
@@ -445,8 +445,7 @@ void PhoneTetherActivity::renderMonitoring() const {
     char buf[40];
     char thrBuf[16];
     snprintf(thrBuf, sizeof(thrBuf), "%d", static_cast<int>(rssiThreshold));
-    snprintf(buf, sizeof(buf), "RSSI:   %d dBm  (Thr: %s)",
-             static_cast<int>(currentRssi), thrBuf);
+    snprintf(buf, sizeof(buf), "RSSI:   %d dBm  (Thr: %s)", static_cast<int>(currentRssi), thrBuf);
     renderer.drawText(UI_10_FONT_ID, 20, y, buf);
     y += lineH;
   } else {
@@ -478,8 +477,8 @@ void PhoneTetherActivity::renderMonitoring() const {
     static constexpr int SIG_CEIL = -30;
     static constexpr int SIG_RANGE = SIG_CEIL - SIG_FLOOR;  // 70
 
-    const int thrLineY = graphBottom -
-        static_cast<int>((static_cast<int>(rssiThreshold) - SIG_FLOOR) * GRAPH_H / SIG_RANGE);
+    const int thrLineY =
+        graphBottom - static_cast<int>((static_cast<int>(rssiThreshold) - SIG_FLOOR) * GRAPH_H / SIG_RANGE);
     // Draw dashed threshold line
     for (int dx = 0; dx < graphW; dx += 4) {
       renderer.drawLine(graphX + dx, thrLineY, graphX + dx + 2, thrLineY, true);
@@ -514,8 +513,7 @@ void PhoneTetherActivity::renderAlert() const {
   const int midY = pageHeight / 2;
   const int lineH12 = renderer.getTextHeight(UI_12_FONT_ID);
 
-  renderer.drawCenteredText(UI_12_FONT_ID, midY - lineH12 * 2 - 10,
-                            "! DEVICE LOST !", true, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(UI_12_FONT_ID, midY - lineH12 * 2 - 10, "! DEVICE LOST !", true, EpdFontFamily::BOLD);
 
   // Last seen time
   const unsigned long elapsed = (millis() - lastSeenTime) / 1000;

@@ -21,21 +21,20 @@ void PingActivity::onEnter() {
   maxRtt = 0;
   totalRtt = 0;
 
-  startActivityForResult(
-      std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Ping Host/IP", "8.8.8.8", 253),
-      [this](const ActivityResult& result) {
-        if (result.isCancelled) {
-          finish();
-        } else {
-          targetHost = std::get<KeyboardResult>(result.data).text;
-          if (targetHost.empty()) {
-            finish();
-          } else {
-            state = PINGING;
-            lastPingTime = 0;
-          }
-        }
-      });
+  startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Ping Host/IP", "8.8.8.8", 253),
+                         [this](const ActivityResult& result) {
+                           if (result.isCancelled) {
+                             finish();
+                           } else {
+                             targetHost = std::get<KeyboardResult>(result.data).text;
+                             if (targetHost.empty()) {
+                               finish();
+                             } else {
+                               state = PINGING;
+                               lastPingTime = 0;
+                             }
+                           }
+                         });
 }
 
 void PingActivity::onExit() { Activity::onExit(); }
@@ -141,7 +140,7 @@ void PingActivity::renderPinging() const {
   y += lineH + 5;
 
   // Show recent results
-  for (auto& r : results) {
+  for (const auto& r : results) {
     char buf[64];
     if (r.success) {
       snprintf(buf, sizeof(buf), "Reply: %lu ms", r.rttMs);

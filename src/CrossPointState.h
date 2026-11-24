@@ -1,29 +1,36 @@
 #pragma once
+#include <ArduinoJson.h>
+#include <PersistableStore.h>
+
 #include <cstdint>
-#include <iosfwd>
 #include <string>
 
-class CrossPointState {
-  // Static instance
-  static CrossPointState instance;
+class CrossPointState : public PersistableStore<CrossPointState> {
+  CrossPointState() = default;
+
+  friend class PersistableStore<CrossPointState>;
 
  public:
+  static constexpr uint8_t SLEEP_AVOID_REPEAT_LOOKBACK = 5;
+
   std::string openEpubPath;
-  uint8_t lastSleepImage = UINT8_MAX;  // UINT8_MAX = unset sentinel
+  uint32_t sleepLcgCount = 0;
+  uint32_t sleepLcgState = 0;
+  uint32_t sleepOverlayLcgCount = 0;
+  uint32_t sleepOverlayLcgState = 0;
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
-  ~CrossPointState() = default;
+  bool showBootScreen = true;
 
-  // Get singleton instance
-  static CrossPointState& getInstance() { return instance; }
+  static const char* getFilePath() { return "/.crosspoint/state.json"; }
+  void toJson(JsonDocument& doc) const;
+  bool fromJson(JsonVariantConst doc);
 
-  bool saveToFile() const;
+  void getSleepLCG(uint32_t& seed, uint32_t& state, uint16_t& indexesLeft, uint16_t& indexesTotal) const;
+  void getSleepOverlayLCG(uint32_t& seed, uint32_t& state, uint16_t& indexesLeft, uint16_t& indexesTotal) const;
 
-  bool loadFromFile();
-
- private:
-  bool loadFromBinaryFile();
+  void setSleepLCG(uint32_t seed, uint32_t state, uint16_t indexesLeft, uint16_t indexesTotal);
+  void setSleepOverlayLCG(uint32_t seed, uint32_t state, uint16_t indexesLeft, uint16_t indexesTotal);
 };
 
-// Helper macro to access settings
 #define APP_STATE CrossPointState::getInstance()

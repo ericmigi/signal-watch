@@ -68,7 +68,8 @@ void drawDashedLine(const GfxRenderer& renderer, int x1, int x2, int y, int dash
 }  // namespace
 
 // --- Header: inverted full-width bar with UPPERCASE monospace title ---
-void MilitaryTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
+void MilitaryTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                               bool /*backButton*/) const {
   // Fill header bar black (inverted)
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height);
 
@@ -76,16 +77,15 @@ void MilitaryTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const cha
   const bool showBatteryPercentage =
       SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   const int batteryX = rect.x + rect.width - 12 - MilitaryMetrics::values.batteryWidth;
-  drawBatteryRight(renderer,
-                   Rect{batteryX, rect.y + 5, MilitaryMetrics::values.batteryWidth, MilitaryMetrics::values.batteryHeight},
-                   showBatteryPercentage);
+  drawBatteryRight(
+      renderer, Rect{batteryX, rect.y + 5, MilitaryMetrics::values.batteryWidth, MilitaryMetrics::values.batteryHeight},
+      showBatteryPercentage);
 
   if (title) {
     // Convert title to uppercase
     std::string upperTitle(title);
-    for (auto& c : upperTitle) {
-      c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
+    std::transform(upperTitle.begin(), upperTitle.end(), upperTitle.begin(),
+                   [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
 
     int maxTitleWidth = rect.width - MilitaryMetrics::values.contentSidePadding * 2;
     auto truncatedTitle = renderer.truncatedText(UI_10_FONT_ID, upperTitle.c_str(), maxTitleWidth, EpdFontFamily::BOLD);
@@ -96,9 +96,8 @@ void MilitaryTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const cha
 
   if (subtitle) {
     std::string upperSub(subtitle);
-    for (auto& c : upperSub) {
-      c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
+    std::transform(upperSub.begin(), upperSub.end(), upperSub.begin(),
+                   [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
     auto truncatedSubtitle =
         renderer.truncatedText(SMALL_FONT_ID, upperSub.c_str(),
                                rect.width - MilitaryMetrics::values.contentSidePadding * 2, EpdFontFamily::REGULAR);
@@ -125,12 +124,11 @@ void MilitaryTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const 
 
   // Label in uppercase
   std::string upperLabel(label);
-  for (auto& c : upperLabel) {
-    c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-  }
-  auto truncatedLabel = renderer.truncatedText(
-      UI_10_FONT_ID, upperLabel.c_str(), rect.width - MilitaryMetrics::values.contentSidePadding - rightSpace,
-      EpdFontFamily::BOLD);
+  std::transform(upperLabel.begin(), upperLabel.end(), upperLabel.begin(),
+                 [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
+  auto truncatedLabel =
+      renderer.truncatedText(UI_10_FONT_ID, upperLabel.c_str(),
+                             rect.width - MilitaryMetrics::values.contentSidePadding - rightSpace, EpdFontFamily::BOLD);
   renderer.drawText(UI_10_FONT_ID, currentX, rect.y, truncatedLabel.c_str(), true, EpdFontFamily::BOLD);
 
   // Dashed line under the sub-header
@@ -147,12 +145,11 @@ void MilitaryTheme::drawTabBar(const GfxRenderer& renderer, const Rect rect, con
   for (const auto& tab : tabs) {
     // Uppercase tab labels
     std::string upperLabel(tab.label);
-    for (auto& c : upperLabel) {
-      c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
+    std::transform(upperLabel.begin(), upperLabel.end(), upperLabel.begin(),
+                   [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
 
-    const int textWidth =
-        renderer.getTextWidth(UI_10_FONT_ID, upperLabel.c_str(), tab.selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, upperLabel.c_str(),
+                                                tab.selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
 
     if (tab.selected) {
@@ -178,9 +175,10 @@ void MilitaryTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCou
                              const std::function<std::string(int index)>& rowTitle,
                              const std::function<std::string(int index)>& rowSubtitle,
                              const std::function<UIIcon(int index)>& rowIcon,
-                             const std::function<std::string(int index)>& rowValue, bool highlightValue) const {
-  const int rowHeight =
-      (rowSubtitle != nullptr) ? MilitaryMetrics::values.listWithSubtitleRowHeight : MilitaryMetrics::values.listRowHeight;
+                             const std::function<std::string(int index)>& rowValue, bool highlightValue,
+                             const std::function<bool(int index)>& /*rowDimmed*/) const {
+  const int rowHeight = (rowSubtitle != nullptr) ? MilitaryMetrics::values.listWithSubtitleRowHeight
+                                                 : MilitaryMetrics::values.listRowHeight;
   const int pageItems = rect.height / rowHeight;
 
   // Scroll indicators
@@ -233,9 +231,8 @@ void MilitaryTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCou
     // Title
     auto itemName = rowTitle(i);
     // Uppercase for titles
-    for (auto& c : itemName) {
-      c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
+    std::transform(itemName.begin(), itemName.end(), itemName.begin(),
+                   [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
     auto font = (rowSubtitle != nullptr) ? UI_12_FONT_ID : UI_10_FONT_ID;
     auto item = renderer.truncatedText(font, itemName.c_str(), textWidth);
     renderer.drawText(font, textX, itemY, item.c_str(), !isSelected);
@@ -312,8 +309,9 @@ void MilitaryTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonC
                                    const std::function<std::string(int index)>& buttonLabel,
                                    const std::function<UIIcon(int index)>& rowIcon) const {
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = MilitaryMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (MilitaryMetrics::values.menuRowHeight + MilitaryMetrics::values.menuSpacing);
+    const int tileY =
+        MilitaryMetrics::values.verticalSpacing + rect.y +
+        static_cast<int>(i) * (MilitaryMetrics::values.menuRowHeight + MilitaryMetrics::values.menuSpacing);
 
     const bool selected = selectedIndex == i;
 
@@ -329,9 +327,8 @@ void MilitaryTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonC
 
     std::string labelStr = buttonLabel(i);
     // Uppercase
-    for (auto& c : labelStr) {
-      c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-    }
+    std::transform(labelStr.begin(), labelStr.end(), labelStr.begin(),
+                   [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
 
     // Add > prefix for selected
     if (selected) {
@@ -347,35 +344,6 @@ void MilitaryTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonC
   }
 }
 
-// --- Progress bar: text-based |||||||---- style ---
-void MilitaryTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const size_t current,
-                                    const size_t total) const {
-  if (total == 0) {
-    return;
-  }
-
-  const int percent = static_cast<int>((static_cast<uint64_t>(current) * 100) / total);
-
-  // Draw sharp outline
-  renderer.drawRect(rect.x, rect.y, rect.width, rect.height);
-
-  // Filled portion
-  const int fillWidth = (rect.width - 4) * percent / 100;
-  if (fillWidth > 0) {
-    renderer.fillRect(rect.x + 2, rect.y + 2, fillWidth, rect.height - 4);
-  }
-
-  // Text-based percentage below
-  std::string progressText;
-  constexpr int barChars = 20;
-  const int filledChars = barChars * percent / 100;
-  for (int i = 0; i < barChars; i++) {
-    progressText += (i < filledChars) ? '|' : '-';
-  }
-  progressText += " " + std::to_string(percent) + "%";
-  renderer.drawCenteredText(UI_10_FONT_ID, rect.y + rect.height + 15, progressText.c_str());
-}
-
 // --- Popup: double border with corner brackets ---
 Rect MilitaryTheme::drawPopup(const GfxRenderer& renderer, const char* message) const {
   constexpr int margin = 20;
@@ -383,9 +351,8 @@ Rect MilitaryTheme::drawPopup(const GfxRenderer& renderer, const char* message) 
 
   // Uppercase message
   std::string upperMsg(message);
-  for (auto& c : upperMsg) {
-    c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-  }
+  std::transform(upperMsg.begin(), upperMsg.end(), upperMsg.begin(),
+                 [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
 
   const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, upperMsg.c_str(), EpdFontFamily::BOLD);
   const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
@@ -424,36 +391,10 @@ void MilitaryTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& l
 }
 
 // --- Text field: sharp brackets ---
-void MilitaryTheme::drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth) const {
+void MilitaryTheme::drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool /*cursorMode*/,
+                                  int /*contentStartX*/, int /*contentWidth*/) const {
   renderer.drawText(UI_10_FONT_ID, rect.x + 8, rect.y, "[");
   renderer.drawText(UI_10_FONT_ID, rect.x + rect.width - 14, rect.y + rect.height, "]");
   // Draw underline for the input area
   renderer.drawLine(rect.x + 20, rect.y + rect.height, rect.x + rect.width - 20, rect.y + rect.height);
-}
-
-// --- Keyboard key: inverted when selected ---
-void MilitaryTheme::drawKeyboardKey(const GfxRenderer& renderer, Rect rect, const char* label,
-                                    const bool isSelected) const {
-  const int itemWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
-  const int textX = rect.x + (rect.width - itemWidth) / 2;
-
-  if (isSelected) {
-    // Inverted key
-    renderer.fillRect(rect.x, rect.y - 2, rect.width, rect.height);
-    renderer.drawText(UI_10_FONT_ID, textX, rect.y, label, false);
-  } else {
-    renderer.drawText(UI_10_FONT_ID, textX, rect.y, label);
-  }
-}
-
-// --- Help text: uppercase ---
-void MilitaryTheme::drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label) const {
-  std::string upperLabel(label);
-  for (auto& c : upperLabel) {
-    c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
-  }
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  auto truncatedLabel = renderer.truncatedText(SMALL_FONT_ID, upperLabel.c_str(),
-                                               rect.width - metrics.contentSidePadding * 2, EpdFontFamily::REGULAR);
-  renderer.drawCenteredText(SMALL_FONT_ID, rect.y, truncatedLabel.c_str());
 }

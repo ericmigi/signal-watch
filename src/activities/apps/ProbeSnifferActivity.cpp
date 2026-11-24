@@ -16,6 +16,8 @@
 
 static ProbeSnifferActivity* activeSniffer = nullptr;
 
+// buf can't be const: this is a fixed-signature ESP-IDF wifi_promiscuous_cb_t callback.
+// cppcheck-suppress constParameterCallback
 static void probeSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
   if (!activeSniffer || !buf) return;
   if (type != WIFI_PKT_MGMT) return;
@@ -34,14 +36,13 @@ static void probeSnifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
 
   // Tagged parameters start at offset 24
   // SSID tag: tag number (byte), length (byte), then SSID bytes
+  // sig_len >= 28 (checked above) already covers the offset 24/25 reads here.
   char ssid[33] = {0};
-  if (sig_len >= 26) {
-    const uint8_t tag = payload[24];
-    const uint8_t tagLen = payload[25];
-    if (tag == 0 && tagLen > 0 && tagLen <= 32 && static_cast<uint16_t>(26 + tagLen) <= sig_len) {
-      memcpy(ssid, payload + 26, tagLen);
-      ssid[tagLen] = '\0';
-    }
+  const uint8_t tag = payload[24];
+  const uint8_t tagLen = payload[25];
+  if (tag == 0 && tagLen > 0 && tagLen <= 32 && static_cast<uint16_t>(26 + tagLen) <= sig_len) {
+    memcpy(ssid, payload + 26, tagLen);
+    ssid[tagLen] = '\0';
   }
 
   activeSniffer->onProbeRequest(srcMac, ssid, pkt->rx_ctrl.rssi);
@@ -51,14 +52,15 @@ void ProbeSnifferActivity::onProbeRequest(const uint8_t* srcMac, const char* ssi
   portENTER_CRITICAL(&dataMux);
 
   // Search for an existing entry matching both MAC and SSID
-  for (auto& entry : entries) {
-    if (memcmp(entry.mac, srcMac, 6) == 0 && entry.ssid == ssid) {
-      entry.count++;
-      entry.rssi = rssi;
-      entry.lastSeen = millis();
-      portEXIT_CRITICAL(&dataMux);
-      return;
-    }
+  auto it = std::find_if(entries.begin(), entries.end(), [&](const ProbeEntry& entry) {
+    return memcmp(entry.mac, srcMac, 6) == 0 && entry.ssid == ssid;
+  });
+  if (it != entries.end()) {
+    it->count++;
+    it->rssi = rssi;
+    it->lastSeen = millis();
+    portEXIT_CRITICAL(&dataMux);
+    return;
   }
 
   // New entry
@@ -221,8 +223,7 @@ void ProbeSnifferActivity::render(RenderLock&&) {
 
       renderer.drawText(SMALL_FONT_ID, leftPad, y, "SSID", true, EpdFontFamily::BOLD);
       y += 22;
-      renderer.drawText(UI_10_FONT_ID, leftPad, y,
-                        entry.ssid.empty() ? "(broadcast)" : entry.ssid.c_str());
+      renderer.drawText(UI_10_FONT_ID, leftPad, y, entry.ssid.empty() ? "(broadcast)" : entry.ssid.c_str());
       y += lineH;
 
       renderer.drawText(SMALL_FONT_ID, leftPad, y, tr(STR_RSSI), true, EpdFontFamily::BOLD);
@@ -260,8 +261,7 @@ void ProbeSnifferActivity::render(RenderLock&&) {
 
   char subtitle[24];
   snprintf(subtitle, sizeof(subtitle), "%d probes", entryCount);
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Probe Sniffer", subtitle);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Probe Sniffer", subtitle);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
@@ -288,9 +288,8 @@ void ProbeSnifferActivity::render(RenderLock&&) {
           const uint32_t count = entries[i].count;
           portEXIT_CRITICAL(&dataMux);
           char buf[48];
-          snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X %ddBm %lux",
-                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-                   rssi, static_cast<unsigned long>(count));
+          snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X %ddBm %lux", mac[0], mac[1], mac[2], mac[3], mac[4],
+                   mac[5], rssi, static_cast<unsigned long>(count));
           return std::string(buf);
         });
   }
@@ -316,10 +315,9 @@ void ProbeSnifferActivity::saveToCsv() {
   const size_t count = entriesCopy.size();
   for (size_t i = 0; i < count; i++) {
     char line[96];
-    snprintf(line, sizeof(line), "%02X:%02X:%02X:%02X:%02X:%02X,%s,%d,%lu\n",
-             entriesCopy[i].mac[0], entriesCopy[i].mac[1], entriesCopy[i].mac[2],
-             entriesCopy[i].mac[3], entriesCopy[i].mac[4], entriesCopy[i].mac[5],
-             entriesCopy[i].ssid.c_str(), entriesCopy[i].rssi,
+    snprintf(line, sizeof(line), "%02X:%02X:%02X:%02X:%02X:%02X,%s,%d,%lu\n", entriesCopy[i].mac[0],
+             entriesCopy[i].mac[1], entriesCopy[i].mac[2], entriesCopy[i].mac[3], entriesCopy[i].mac[4],
+             entriesCopy[i].mac[5], entriesCopy[i].ssid.c_str(), entriesCopy[i].rssi,
              static_cast<unsigned long>(entriesCopy[i].count));
     csv += line;
   }
@@ -330,7 +328,6 @@ void ProbeSnifferActivity::saveToCsv() {
 
 std::string ProbeSnifferActivity::macToString(const uint8_t* mac) {
   char buf[18];
-  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   return std::string(buf);
 }

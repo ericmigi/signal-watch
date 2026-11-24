@@ -5,9 +5,8 @@
 #include <Logging.h>
 #include <WiFi.h>
 
-#include "util/RadioManager.h"
-
 #include <algorithm>
+#include <iterator>
 #include <map>
 
 #include "MappedInputManager.h"
@@ -15,6 +14,7 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/RadioManager.h"
 
 void WifiConnectActivity::onEnter() {
   Activity::onEnter();
@@ -71,9 +71,9 @@ void WifiConnectActivity::processScanResults() {
   }
 
   networks.clear();
-  for (auto& pair : unique) {
-    networks.push_back(std::move(pair.second));
-  }
+  networks.reserve(unique.size());
+  std::transform(unique.begin(), unique.end(), std::back_inserter(networks),
+                 [](auto& pair) { return std::move(pair.second); });
   std::sort(networks.begin(), networks.end(), [](const ApInfo& a, const ApInfo& b) {
     if (a.saved != b.saved) return a.saved;
     return a.rssi > b.rssi;
@@ -87,11 +87,11 @@ void WifiConnectActivity::processScanResults() {
 
 void WifiConnectActivity::selectNetwork(int index) {
   if (index < 0 || index >= static_cast<int>(networks.size())) return;
-  auto& net = networks[index];
+  const auto& net = networks[index];
   selectedSSID = net.ssid;
   enteredPassword.clear();
 
-  const auto* saved = WIFI_STORE.findCredential(selectedSSID);
+  const auto saved = WIFI_STORE.findCredential(selectedSSID);
   if (saved && !saved->password.empty()) {
     enteredPassword = saved->password;
     attemptConnection();
@@ -100,7 +100,7 @@ void WifiConnectActivity::selectNetwork(int index) {
 
   if (net.encrypted) {
     startActivityForResult(
-        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "WiFi Password", "", 64, false),
+        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "WiFi Password", "", 64, InputType::Password),
         [this](const ActivityResult& result) {
           if (result.isCancelled) {
             state = LIST;

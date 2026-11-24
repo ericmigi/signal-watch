@@ -3,14 +3,15 @@
 #include <HalStorage.h>
 #include <WiFi.h>
 
+#include <algorithm>
+
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/RadioManager.h"
 
 void PerimeterWatchActivity::macToStr(const uint8_t* mac, char* buf, size_t bufLen) {
-  snprintf(buf, bufLen, "%02X:%02X:%02X:%02X:%02X:%02X",
-           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  snprintf(buf, bufLen, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 void PerimeterWatchActivity::onEnter() {
@@ -45,10 +46,7 @@ void PerimeterWatchActivity::doBaselineScan() {
 }
 
 bool PerimeterWatchActivity::macInBaseline(const uint8_t* mac) const {
-  for (const auto& m : baseline) {
-    if (memcmp(m.bytes, mac, 6) == 0) return true;
-  }
-  return false;
+  return std::any_of(baseline.begin(), baseline.end(), [mac](const Mac& m) { return memcmp(m.bytes, mac, 6) == 0; });
 }
 
 void PerimeterWatchActivity::doWatchScan() {
@@ -59,10 +57,8 @@ void PerimeterWatchActivity::doWatchScan() {
     if (!bssid) continue;
     if (!macInBaseline(bssid) && static_cast<int>(intrusions.size()) < MAX_INTRUSIONS) {
       // Check if already logged
-      bool dup = false;
-      for (const auto& intr : intrusions) {
-        if (memcmp(intr.mac, bssid, 6) == 0) { dup = true; break; }
-      }
+      bool dup = std::any_of(intrusions.begin(), intrusions.end(),
+                             [bssid](const Intrusion& intr) { return memcmp(intr.mac, bssid, 6) == 0; });
       if (!dup) {
         Intrusion intr;
         memcpy(intr.mac, bssid, 6);
@@ -97,7 +93,10 @@ void PerimeterWatchActivity::exportCsv() {
 
 void PerimeterWatchActivity::loop() {
   if (state == SETUP) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) { finish(); return; }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      finish();
+      return;
+    }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       RADIO.ensureWifi();
       doBaselineScan();
@@ -123,7 +122,10 @@ void PerimeterWatchActivity::loop() {
   }
 
   // REPORT
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) { finish(); return; }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    finish();
+    return;
+  }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     exportCsv();
     requestUpdate();
@@ -180,15 +182,15 @@ void PerimeterWatchActivity::render(RenderLock&&) {
       int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
       int contentH = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
       char macBuf[20];
-      GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentH}, count, reportIndex,
+      GUI.drawList(
+          renderer, Rect{0, contentTop, pageWidth, contentH}, count, reportIndex,
           [this, &macBuf](int i) -> std::string {
             macToStr(intrusions[i].mac, macBuf, sizeof(macBuf));
             return std::string(macBuf);
           },
           [this](int i) -> std::string {
             char sub[24];
-            snprintf(sub, sizeof(sub), "%d dBm  +%lus", intrusions[i].rssi,
-                     intrusions[i].timestamp / 1000UL);
+            snprintf(sub, sizeof(sub), "%d dBm  +%lus", intrusions[i].rssi, intrusions[i].timestamp / 1000UL);
             return std::string(sub);
           });
     }

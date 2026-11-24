@@ -1,11 +1,14 @@
 #pragma once
+#include <NimBLEAddress.h>
+
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include <BLEDevice.h>
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
+
+class NimBLEClient;
 
 class BleScannerActivity final : public Activity {
  public:
@@ -26,7 +29,7 @@ class BleScannerActivity final : public Activity {
     std::string name;
     std::string mac;
     int rssi;
-    BLEAddress address{""};
+    NimBLEAddress address{};
   };
 
   State state = SCANNING_VIEW;
@@ -43,7 +46,7 @@ class BleScannerActivity final : public Activity {
   static constexpr int MAX_DEVICES = 50;
 
   // BLE Explorer (service/characteristic browsing)
-  BLEClient* pClient = nullptr;
+  NimBLEClient* pClient = nullptr;
   bool connected = false;
 
   struct ServiceInfo {

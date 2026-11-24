@@ -27,8 +27,8 @@ class NetworkChangeActivity final : public Activity {
 
   struct Snapshot {
     std::vector<Device> devices;
-    unsigned long timestamp;
-    char label[32];
+    unsigned long timestamp = 0;
+    char label[32] = {};
   };
 
   State state = MENU;
@@ -52,9 +52,6 @@ class NetworkChangeActivity final : public Activity {
   void compareSnapshots();
   void saveSnapshotToFile(const Snapshot& snap);
 
-  static constexpr const char* MENU_ITEMS[] = {
-      "Take Snapshot",
-      "Compare with Saved",
-      "Back"};
+  static constexpr const char* MENU_ITEMS[] = {"Take Snapshot", "Compare with Saved", "Back"};
   static constexpr int MENU_COUNT = 3;
 };

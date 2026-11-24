@@ -1,12 +1,11 @@
 #pragma once
-#include <cstdint>
-#include <string>
-
+#include <HalStorage.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/portmacro.h>
 #include <freertos/semphr.h>
 
-#include <HalStorage.h>
+#include <cstdint>
+#include <string>
 
 #include "activities/Activity.h"
 
@@ -51,7 +50,7 @@ class PacketMonitorActivity final : public Activity {
   CaptureMode captureMode = CAPTURE_ALL;
   bool pcapRecording = false;
   SemaphoreHandle_t fileMux = nullptr;
-  FsFile pcapFile;
+  HalFile pcapFile;
   bool pcapFileOpen = false;
   volatile uint32_t packetsSaved = 0;
   volatile uint32_t pcapFileSize = 0;

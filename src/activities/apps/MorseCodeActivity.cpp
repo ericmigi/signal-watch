@@ -13,16 +13,16 @@
 
 // Morse code lookup: A-Z (indices 0-25), 0-9 (indices 26-35)
 const char* MorseCodeActivity::morseTable[36] = {
-    ".-",    "-...",  "-.-.",  "-..",  ".",    "..-.", "--.",   "....",  "..",     // A-I
-    ".---",  "-.-",   ".-..",  "--",   "-.",   "---",  ".--.",  "--.-",  ".-.",   // J-R
-    "...",   "-",     "..-",   "...-", ".--",  "-..-", "-.--",  "--..",           // S-Z
-    "-----", ".----", "..---", "...--", "....-", ".....", "-....", "--...", "---..", // 0-8
-    "----."                                                                        // 9
+    ".-",    "-...",  "-.-.",  "-..",   ".",     "..-.",  "--.",   "....",  "..",     // A-I
+    ".---",  "-.-",   ".-..",  "--",    "-.",    "---",   ".--.",  "--.-",  ".-.",    // J-R
+    "...",   "-",     "..-",   "...-",  ".--",   "-..-",  "-.--",  "--..",            // S-Z
+    "-----", ".----", "..---", "...--", "....-", ".....", "-....", "--...", "---..",  // 0-8
+    "----."                                                                           // 9
 };
 
 const char MorseCodeActivity::morseChars[36] = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
-                                                 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-                                                 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+                                                'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+                                                'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
 
 std::string MorseCodeActivity::textToMorse(const std::string& text) {
   std::string result;
@@ -91,7 +91,8 @@ void MorseCodeActivity::loop() {
       if (modeIndex == 0) {
         // Encode: get text input
         startActivityForResult(
-            std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Text to Morse"),
+            std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Text to Morse", "", 0, InputType::Text,
+                                                    /*allowBleKeyboard=*/true),
             [this](const ActivityResult& result) {
               if (result.isCancelled) {
                 state = MODE_SELECT;
@@ -215,9 +216,8 @@ void MorseCodeActivity::renderModeSelect() const {
   int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
   const char* modes[] = {tr(STR_ENCODE_TEXT), tr(STR_DECODE_MORSE), tr(STR_REFERENCE_CHART)};
-  GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, 3, modeIndex,
-      [&modes](int i) { return std::string(modes[i]); });
+  GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, 3, modeIndex,
+               [&modes](int i) { return std::string(modes[i]); });
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

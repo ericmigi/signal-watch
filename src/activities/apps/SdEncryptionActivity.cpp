@@ -7,6 +7,7 @@
 #include <mbedtls/aes.h>
 #include <mbedtls/sha256.h>
 
+#include <algorithm>
 #include <cstring>
 
 #include "MappedInputManager.h"
@@ -86,10 +87,7 @@ bool SdEncryptionActivity::isEligibleExt(const char* name) {
 
   // Static table kept in flash
   static constexpr const char* EXT[] = {".dat", ".cfg", ".csv", ".json", ".txt"};
-  for (const char* e : EXT) {
-    if (strcmp(dot, e) == 0) return true;
-  }
-  return false;
+  return std::any_of(std::begin(EXT), std::end(EXT), [dot](const char* e) { return strcmp(dot, e) == 0; });
 }
 
 int SdEncryptionActivity::countEligible(bool forEncrypt) const {
@@ -99,7 +97,10 @@ int SdEncryptionActivity::countEligible(bool forEncrypt) const {
 
   HalFile entry;
   while ((entry = dir.openNextFile())) {
-    if (entry.isDirectory()) { entry.close(); continue; }
+    if (entry.isDirectory()) {
+      entry.close();
+      continue;
+    }
 
     char name[128];
     entry.getName(name, sizeof(name));
@@ -126,7 +127,10 @@ bool SdEncryptionActivity::hasEncryptedFiles() const {
 
   HalFile entry;
   while ((entry = dir.openNextFile())) {
-    if (entry.isDirectory()) { entry.close(); continue; }
+    if (entry.isDirectory()) {
+      entry.close();
+      continue;
+    }
 
     char name[128];
     entry.getName(name, sizeof(name));
@@ -153,14 +157,20 @@ bool SdEncryptionActivity::encryptFile(const char* path, const uint8_t key[32]) 
   if (!src) return false;
 
   uint32_t fileSize = static_cast<uint32_t>(src.size());
-  if (fileSize > MAX_FILE_BYTES) { src.close(); return false; }
+  if (fileSize > MAX_FILE_BYTES) {
+    src.close();
+    return false;
+  }
 
   // Allocate on heap — files are small (< 32 KB)
   uint32_t padded = ((fileSize + 15) / 16) * 16;
   if (padded == 0) padded = 16;  // at least one full block for PKCS7
 
   uint8_t* plain = static_cast<uint8_t*>(malloc(padded));
-  if (!plain) { src.close(); return false; }
+  if (!plain) {
+    src.close();
+    return false;
+  }
   memset(plain, 0, padded);
 
   int readBytes = src.read(plain, fileSize);
@@ -226,10 +236,8 @@ bool SdEncryptionActivity::encryptFile(const char* path, const uint8_t key[32]) 
   }
 
   // ENC-005: check every write return value
-  bool writeOk =
-      dst.write(reinterpret_cast<const uint8_t*>(MAGIC), MAGIC_LEN) == MAGIC_LEN &&
-      dst.write(iv, IV_LEN) == IV_LEN &&
-      dst.write(cipher, padded) == static_cast<int>(padded);
+  bool writeOk = dst.write(reinterpret_cast<const uint8_t*>(MAGIC), MAGIC_LEN) == MAGIC_LEN &&
+                 dst.write(iv, IV_LEN) == IV_LEN && dst.write(cipher, padded) == static_cast<int>(padded);
 
   dst.flush();
   dst.close();
@@ -271,7 +279,10 @@ bool SdEncryptionActivity::decryptFile(const char* path, const uint8_t key[32]) 
   }
 
   uint8_t* raw = static_cast<uint8_t*>(malloc(fileSize));
-  if (!raw) { src.close(); return false; }
+  if (!raw) {
+    src.close();
+    return false;
+  }
 
   int r = src.read(raw, fileSize);
   src.close();
@@ -288,8 +299,8 @@ bool SdEncryptionActivity::decryptFile(const char* path, const uint8_t key[32]) 
     return false;
   }
 
-  const uint8_t* iv      = raw + MAGIC_LEN;
-  const uint8_t* cipher  = raw + MAGIC_LEN + IV_LEN;
+  const uint8_t* iv = raw + MAGIC_LEN;
+  const uint8_t* cipher = raw + MAGIC_LEN + IV_LEN;
 
   uint8_t* plain = static_cast<uint8_t*>(malloc(cipherLen));
   if (!plain) {
@@ -347,7 +358,7 @@ bool SdEncryptionActivity::decryptFile(const char* path, const uint8_t key[32]) 
     return false;
   }
   char outPath[256];
-  size_t copyLen = pathLen - 5;  // strip ".benc"
+  size_t copyLen = pathLen - 5;                                       // strip ".benc"
   if (copyLen >= sizeof(outPath) - 4) copyLen = sizeof(outPath) - 5;  // leave room for ".tmp"
   memcpy(outPath, path, copyLen);
   outPath[copyLen] = '\0';
@@ -399,7 +410,10 @@ bool SdEncryptionActivity::encryptAll(const uint8_t key[32]) {
 
   HalFile entry;
   while (count < MAX_FILES && (entry = dir.openNextFile())) {
-    if (entry.isDirectory()) { entry.close(); continue; }
+    if (entry.isDirectory()) {
+      entry.close();
+      continue;
+    }
 
     char name[FNAME_MAX];
     entry.getName(name, sizeof(name));
@@ -456,7 +470,10 @@ bool SdEncryptionActivity::decryptAll(const uint8_t key[32]) {
 
   HalFile entry;
   while (count < MAX_FILES && (entry = dir.openNextFile())) {
-    if (entry.isDirectory()) { entry.close(); continue; }
+    if (entry.isDirectory()) {
+      entry.close();
+      continue;
+    }
 
     char name[FNAME_MAX];
     entry.getName(name, sizeof(name));
@@ -506,7 +523,8 @@ void SdEncryptionActivity::showMessage(const char* msg, unsigned long durationMs
 // ENC-004: phase 2 — user has verified current PIN; now ask for the new one
 void SdEncryptionActivity::launchChangePinPhase2() {
   startActivityForResult(
-      std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Enter new PIN", "", 32, true),
+      std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Enter new PIN", "", 32, InputType::Password,
+                                              /*allowBleKeyboard=*/true),
       [this](const ActivityResult& result) {
         changePinPhase2 = false;
 
@@ -574,11 +592,17 @@ void SdEncryptionActivity::loop() {
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-      if (menuIndex > 0) { menuIndex--; requestUpdate(); }
+      if (menuIndex > 0) {
+        menuIndex--;
+        requestUpdate();
+      }
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
-      if (menuIndex < MENU_ITEMS - 1) { menuIndex++; requestUpdate(); }
+      if (menuIndex < MENU_ITEMS - 1) {
+        menuIndex++;
+        requestUpdate();
+      }
       return;
     }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -587,45 +611,46 @@ void SdEncryptionActivity::loop() {
       if (captured == 2) {
         // ENC-004: Change PIN — two-phase flow.
         // Phase 1: verify current PIN.
-        startActivityForResult(
-            std::make_unique<KeyboardEntryActivity>(
-                renderer, mappedInput, "Enter current PIN", "", 32, true),
-            [this](const ActivityResult& result) {
-              if (result.isCancelled) return;
-              const auto& pin = std::get<KeyboardResult>(result.data).text;
-              if (pin.empty()) return;
+        startActivityForResult(std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Enter current PIN", "",
+                                                                       32, InputType::Password,
+                                                                       /*allowBleKeyboard=*/true),
+                               [this](const ActivityResult& result) {
+                                 if (result.isCancelled) return;
+                                 const auto& pin = std::get<KeyboardResult>(result.data).text;
+                                 if (pin.empty()) return;
 
-              uint8_t key[KEY_LEN];
-              deriveKey(pin.c_str(), key);
+                                 uint8_t key[KEY_LEN];
+                                 deriveKey(pin.c_str(), key);
 
-              // Guard: refuse if encrypted files exist (they can't be re-keyed)
-              if (hasEncryptedFiles()) {
-                memset(key, 0, sizeof(key));
-                showMessage("Decrypt files first");
-                return;
-              }
+                                 // Guard: refuse if encrypted files exist (they can't be re-keyed)
+                                 if (hasEncryptedFiles()) {
+                                   memset(key, 0, sizeof(key));
+                                   showMessage("Decrypt files first");
+                                   return;
+                                 }
 
-              // Verify token exists and matches
-              if (Storage.exists(VERIFY_PATH) && !verifyPin(key)) {
-                memset(key, 0, sizeof(key));
-                showMessage("Wrong PIN");
-                return;
-              }
+                                 // Verify token exists and matches
+                                 if (Storage.exists(VERIFY_PATH) && !verifyPin(key)) {
+                                   memset(key, 0, sizeof(key));
+                                   showMessage("Wrong PIN");
+                                   return;
+                                 }
 
-              // Correct PIN (or no token yet) — save key for phase 2
-              memcpy(oldKey, key, KEY_LEN);
-              memset(key, 0, sizeof(key));
-              changePinPhase2 = true;
+                                 // Correct PIN (or no token yet) — save key for phase 2
+                                 memcpy(oldKey, key, KEY_LEN);
+                                 memset(key, 0, sizeof(key));
+                                 changePinPhase2 = true;
 
-              // Phase 2: ask for the new PIN
-              launchChangePinPhase2();
-            });
+                                 // Phase 2: ask for the new PIN
+                                 launchChangePinPhase2();
+                               });
         return;
       }
 
       // Encrypt (0) or Decrypt (1)
       startActivityForResult(
-          std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Enter PIN", "", 32, true),
+          std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "Enter PIN", "", 32, InputType::Password,
+                                                  /*allowBleKeyboard=*/true),
           [this, captured](const ActivityResult& result) {
             if (result.isCancelled) return;
             const auto& pin = std::get<KeyboardResult>(result.data).text;
@@ -688,9 +713,15 @@ void SdEncryptionActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
   switch (state) {
-    case MENU:       renderMenu();       break;
-    case PROCESSING: renderProcessing(); break;
-    case DONE:       renderDone();       break;
+    case MENU:
+      renderMenu();
+      break;
+    case PROCESSING:
+      renderProcessing();
+      break;
+    case DONE:
+      renderDone();
+      break;
   }
 
   renderer.displayBuffer();
@@ -698,12 +729,12 @@ void SdEncryptionActivity::render(RenderLock&&) {
 
 void SdEncryptionActivity::renderMenu() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth  = renderer.getScreenWidth();
+  const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "SD Encryption");
 
-  const int listTop    = metrics.topPadding + metrics.headerHeight;
+  const int listTop = metrics.topPadding + metrics.headerHeight;
   const int listHeight = pageHeight - listTop - metrics.buttonHintsHeight;
 
   static constexpr const char* LABELS[MENU_ITEMS] = {
@@ -718,12 +749,8 @@ void SdEncryptionActivity::renderMenu() const {
   };
 
   GUI.drawList(
-      renderer,
-      Rect{0, listTop, pageWidth, listHeight},
-      MENU_ITEMS,
-      menuIndex,
-      [](int i) -> std::string { return LABELS[i]; },
-      [](int i) -> std::string { return SUBTITLES[i]; });
+      renderer, Rect{0, listTop, pageWidth, listHeight}, MENU_ITEMS, menuIndex,
+      [](int i) -> std::string { return LABELS[i]; }, [](int i) -> std::string { return SUBTITLES[i]; });
 
   // Timed message overlay
   if (msgUntilMs && millis() < msgUntilMs) {
@@ -736,7 +763,7 @@ void SdEncryptionActivity::renderMenu() const {
 
 void SdEncryptionActivity::renderProcessing() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth  = renderer.getScreenWidth();
+  const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "SD Encryption");
@@ -758,9 +785,7 @@ void SdEncryptionActivity::renderProcessing() const {
     const int barH = 14;
     const int barX = metrics.contentSidePadding;
     renderer.drawRect(barX, y, barW, barH, true);
-    int fill = (totalFiles > 0)
-        ? static_cast<int>((static_cast<long>(processedFiles) * (barW - 2)) / totalFiles)
-        : 0;
+    int fill = static_cast<int>((static_cast<long>(processedFiles) * (barW - 2)) / totalFiles);
     if (fill > 0) renderer.fillRect(barX + 1, y + 1, fill, barH - 2, true);
   } else {
     renderer.drawCenteredText(UI_10_FONT_ID, y, "Please wait...");
@@ -769,7 +794,7 @@ void SdEncryptionActivity::renderProcessing() const {
 
 void SdEncryptionActivity::renderDone() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth  = renderer.getScreenWidth();
+  const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "SD Encryption");

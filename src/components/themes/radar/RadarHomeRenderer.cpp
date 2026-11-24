@@ -1,7 +1,7 @@
 #include "RadarHomeRenderer.h"
 
-#include <GfxRenderer.h>
 #include <EpdFontFamily.h>
+#include <GfxRenderer.h>
 
 #include "fontIds.h"
 
@@ -11,8 +11,8 @@
 //       4 = bottom, 5 = bottom-left, 6 = left, 7 = top-left.
 // Values are sin/cos * 1000, integer only (no <cmath>).
 // ---------------------------------------------------------------------------
-static const int NODE_DX[8] = {    0,  707, 1000,  707,    0, -707, -1000, -707 };
-static const int NODE_DY[8] = { -1000, -707,    0,  707, 1000,  707,     0, -707 };
+static const int NODE_DX[8] = {0, 707, 1000, 707, 0, -707, -1000, -707};
+static const int NODE_DY[8] = {-1000, -707, 0, 707, 1000, 707, 0, -707};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,7 +47,7 @@ void RadarHomeRenderer::drawCircle(GfxRenderer& r, int cx, int cy, int radius) {
   }
 }
 
-void RadarHomeRenderer::drawDashedLine(GfxRenderer& r, int x1, int y1, int x2, int y2, int dashLen, int gapLen) {
+void RadarHomeRenderer::drawDashedLine(const GfxRenderer& r, int x1, int y1, int x2, int y2, int dashLen, int gapLen) {
   const int dx = x2 - x1;
   const int dy = y2 - y1;
   const int adx = dx < 0 ? -dx : dx;
@@ -71,20 +71,8 @@ void RadarHomeRenderer::drawDashedLine(GfxRenderer& r, int x1, int y1, int x2, i
   }
 }
 
-void RadarHomeRenderer::drawRoundRectOutline(GfxRenderer& r, int x, int y, int w, int h, int radius) {
-  // Use the built-in renderer method which already exists
-  r.drawRoundedRect(x, y, w, h, 1, radius, true);
-}
-
-void RadarHomeRenderer::fillRoundRect(GfxRenderer& r, int x, int y, int w, int h, int radius) {
-  // Use bool state=true (theme-aware foreground) rather than Color::Black so
-  // the fill polarity follows the renderer's active theme instead of being
-  // hard-wired to a literal colour.
-  r.fillRect(x, y, w, h, true);
-}
-
-void RadarHomeRenderer::drawTextCenteredInRect(GfxRenderer& r, int rx, int ry, int rw, int rh,
-                                               const char* text, bool blackText) {
+void RadarHomeRenderer::drawTextCenteredInRect(const GfxRenderer& r, int rx, int ry, int rw, int rh, const char* text,
+                                               bool blackText) {
   // Pass BOLD to getTextWidth so centering math matches the bold glyphs drawn below.
   int tw = r.getTextWidth(SMALL_FONT_ID, text, EpdFontFamily::BOLD);
   int th = r.getTextHeight(SMALL_FONT_ID);
@@ -99,12 +87,12 @@ void RadarHomeRenderer::drawTextCenteredInRect(GfxRenderer& r, int rx, int ry, i
 
 void RadarHomeRenderer::draw(GfxRenderer& renderer, const RadarNode* nodes, int selectedIndex,
                              const RadarHomeStatus& status) {
-  const int pageWidth = renderer.getScreenWidth();   // 480
+  const int pageWidth = renderer.getScreenWidth();  // 480
 
   // -----------------------------------------------------------------------
-  // A. Top bar: "BISCUIT." brand left, battery right, then separator line
+  // A. Top bar: "biscuit" brand left, battery right, then separator line
   // -----------------------------------------------------------------------
-  renderer.drawText(UI_12_FONT_ID, 14, 8, "biscuit.", true, EpdFontFamily::BOLD);
+  renderer.drawText(UI_12_FONT_ID, 14, 8, "biscuit", true, EpdFontFamily::BOLD);
 
   // Battery percent string at top-right
   char batStr[12];

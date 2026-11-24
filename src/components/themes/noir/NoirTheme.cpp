@@ -79,16 +79,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
 }
 }  // namespace
 
-void NoirTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
-  if (!showPercentage) return;
-  const uint16_t percentage = powerManager.getBatteryPercentage();
-  const auto percentageText = std::to_string(percentage) + "%";
-  const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, percentageText.c_str());
-  // White text on black header background
-  renderer.drawText(SMALL_FONT_ID, rect.x - textWidth, rect.y, percentageText.c_str(), false);
-}
-
-void NoirTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
+void NoirTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                           bool /*backButton*/) const {
   // Fill entire header area with black
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, true);
 
@@ -129,7 +121,8 @@ void NoirTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char
   int rightSpace = NoirMetrics::values.contentSidePadding;
 
   if (rightLabel) {
-    auto truncatedRightLabel = renderer.truncatedText(SMALL_FONT_ID, rightLabel, maxListValueWidth, EpdFontFamily::REGULAR);
+    auto truncatedRightLabel =
+        renderer.truncatedText(SMALL_FONT_ID, rightLabel, maxListValueWidth, EpdFontFamily::REGULAR);
     int rightLabelWidth = renderer.getTextWidth(SMALL_FONT_ID, truncatedRightLabel.c_str());
     renderer.drawText(SMALL_FONT_ID, rect.x + rect.width - NoirMetrics::values.contentSidePadding - rightLabelWidth,
                       rect.y + 7, truncatedRightLabel.c_str(), false);  // white text
@@ -138,7 +131,8 @@ void NoirTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char
 
   auto truncatedLabel = renderer.truncatedText(
       UI_10_FONT_ID, label, rect.width - NoirMetrics::values.contentSidePadding - rightSpace, EpdFontFamily::REGULAR);
-  renderer.drawText(UI_10_FONT_ID, currentX, rect.y + 6, truncatedLabel.c_str(), false, EpdFontFamily::REGULAR);  // white text
+  renderer.drawText(UI_10_FONT_ID, currentX, rect.y + 6, truncatedLabel.c_str(), false,
+                    EpdFontFamily::REGULAR);  // white text
 }
 
 void NoirTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
@@ -160,8 +154,8 @@ void NoirTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::ve
     }
 
     // White text if this tab is selected, black text otherwise
-    renderer.drawText(UI_10_FONT_ID, currentX + hPaddingInSelection, rect.y + 6, tab.label,
-                      !tab.selected, EpdFontFamily::REGULAR);
+    renderer.drawText(UI_10_FONT_ID, currentX + hPaddingInSelection, rect.y + 6, tab.label, !tab.selected,
+                      EpdFontFamily::REGULAR);
 
     currentX += tabWidth + NoirMetrics::values.tabSpacing;
   }
@@ -174,7 +168,8 @@ void NoirTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<std::string(int index)>& rowTitle,
                          const std::function<std::string(int index)>& rowSubtitle,
                          const std::function<UIIcon(int index)>& rowIcon,
-                         const std::function<std::string(int index)>& rowValue, bool highlightValue) const {
+                         const std::function<std::string(int index)>& rowValue, bool highlightValue,
+                         const std::function<bool(int index)>& /*rowDimmed*/) const {
   int rowHeight =
       (rowSubtitle != nullptr) ? NoirMetrics::values.listWithSubtitleRowHeight : NoirMetrics::values.listRowHeight;
   int pageItems = rect.height / rowHeight;
@@ -243,7 +238,7 @@ void NoirTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
           // Draw white background behind icon so it's visible on black selection
           renderer.fillRect(iconX - 1, itemY + iconY - 1, iconSize + 2, iconSize + 2, false);
         }
-        renderer.drawIcon(iconBitmap, iconX, itemY + iconY, iconSize, iconSize);
+        renderer.drawIcon(iconBitmap, iconX, itemY + iconY, iconSize);
       }
     }
 
@@ -304,7 +299,7 @@ void NoirTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
           // White background behind icon so it's visible on black
           renderer.fillRect(textX - 1, textY + 2, mainMenuIconSize + 2, mainMenuIconSize + 2, false);
         }
-        renderer.drawIcon(iconBitmap, textX, textY + 3, mainMenuIconSize, mainMenuIconSize);
+        renderer.drawIcon(iconBitmap, textX, textY + 3, mainMenuIconSize);
         textX += mainMenuIconSize + hPaddingInSelection + 2;
       }
     }
@@ -333,14 +328,16 @@ void NoirTheme::drawButtonHints(GfxRenderer& renderer, const char* btn1, const c
     if (labels[i] != nullptr && labels[i][0] != '\0') {
       // Black filled rounded button with white text
       renderer.fillRoundedRect(x, pageHeight - buttonY, buttonWidth, buttonHeight, cornerRadius, Color::Black);
-      if (!BaseTheme::drawArrowIfNeeded(renderer, labels[i], x + buttonWidth / 2, pageHeight - buttonY + buttonHeight / 2, 5, false)) {
+      if (!BaseTheme::drawArrowIfNeeded(renderer, labels[i], x + buttonWidth / 2,
+                                        pageHeight - buttonY + buttonHeight / 2, 5, false)) {
         const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, labels[i]);
         const int textX = x + (buttonWidth - 1 - textWidth) / 2;
         renderer.drawText(SMALL_FONT_ID, textX, pageHeight - buttonY + textYOffset, labels[i], false);  // white text
       }
     } else {
       // Empty button: just a thin outline
-      renderer.drawRoundedRect(x, pageHeight - smallButtonHeight, buttonWidth, smallButtonHeight, 1, cornerRadius, true);
+      renderer.drawRoundedRect(x, pageHeight - smallButtonHeight, buttonWidth, smallButtonHeight, 1, cornerRadius,
+                               true);
     }
   }
 
@@ -358,8 +355,7 @@ void NoirTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* top
     if (labels[i] != nullptr && labels[i][0] != '\0') {
       const int y = topHintButtonY + i * (buttonHeight + 5);
       // Black filled rounded button
-      renderer.fillRoundedRect(x, y, buttonWidth, buttonHeight, cornerRadius,
-                               true, false, true, false, Color::Black);
+      renderer.fillRoundedRect(x, y, buttonWidth, buttonHeight, cornerRadius, true, false, true, false, Color::Black);
       if (!BaseTheme::drawArrowIfNeeded(renderer, labels[i], x + buttonWidth / 2, y + buttonHeight / 2, 5, false)) {
         // White rotated text
         const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, labels[i]);

@@ -1,12 +1,11 @@
 #include "BleKeyboardActivity.h"
 
-#include <BLEDevice.h>
-#include <BLEHIDDevice.h>
-#include <BLEServer.h>
 #include <GfxRenderer.h>
-#include <HalStorage.h>
 #include <HIDKeyboardTypes.h>
+#include <HalStorage.h>
 #include <Logging.h>
+#include <NimBLEDevice.h>
+#include <NimBLEHIDDevice.h>
 
 #include <algorithm>
 #include <cstring>
@@ -16,14 +15,10 @@
 #include "fontIds.h"
 #include "util/RadioManager.h"
 
-static const uint8_t HID_REPORT_DESCRIPTOR[] = {
-    0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x85, 0x01,
-    0x05, 0x07, 0x19, 0xE0, 0x29, 0xE7, 0x15, 0x00,
-    0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02,
-    0x95, 0x01, 0x75, 0x08, 0x81, 0x01, 0x95, 0x06,
-    0x75, 0x08, 0x15, 0x00, 0x25, 0x65, 0x05, 0x07,
-    0x19, 0x00, 0x29, 0x65, 0x81, 0x00, 0xC0
-};
+static const uint8_t HID_REPORT_DESCRIPTOR[] = {0x05, 0x01, 0x09, 0x06, 0xA1, 0x01, 0x85, 0x01, 0x05, 0x07, 0x19, 0xE0,
+                                                0x29, 0xE7, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02,
+                                                0x95, 0x01, 0x75, 0x08, 0x81, 0x01, 0x95, 0x06, 0x75, 0x08, 0x15, 0x00,
+                                                0x25, 0x65, 0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x81, 0x00, 0xC0};
 
 // Built-in demo scripts (no SD card needed)
 static constexpr const char* BUILTIN_DEMO_NAME = "(Demo) Hello World";
@@ -45,23 +40,30 @@ static const char* BUILTIN_DEMO_LINES[] = {
     nullptr  // sentinel
 };
 
-class BleKeyboardActivity::ServerCallbacks : public BLEServerCallbacks {
+class BleKeyboardActivity::ServerCallbacks : public NimBLEServerCallbacks {
   BleKeyboardActivity& activity;
+
  public:
   explicit ServerCallbacks(BleKeyboardActivity& act) : activity(act) {}
-  void onConnect(BLEServer*) override {
+  void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
     activity.deviceConnected = true;
     activity.state = PAIRED;
     activity.requestUpdate();
     LOG_DBG("BadBLE", "Device connected");
   }
-  void onDisconnect(BLEServer*) override {
+  void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
     activity.deviceConnected = false;
     if (activity.state == EXECUTING) activity.state = DONE;
     activity.requestUpdate();
     LOG_DBG("BadBLE", "Device disconnected");
   }
 };
+
+// Out-of-line (see header) so unique_ptr<ServerCallbacks> can be constructed
+// and destroyed, which is only forward-declared in BleKeyboardActivity.h.
+BleKeyboardActivity::BleKeyboardActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+    : Activity("BleKeyboard", renderer, mappedInput) {}
+BleKeyboardActivity::~BleKeyboardActivity() = default;
 
 void BleKeyboardActivity::onEnter() {
   Activity::onEnter();
@@ -160,28 +162,45 @@ void BleKeyboardActivity::loadScriptContent(const std::string& path) {
   file.close();
 }
 
-void BleKeyboardActivity::startAdvertising() {
-  pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks(*this));
+bool BleKeyboardActivity::startAdvertising() {
+  // BLE HID device initialization may fail if heap is too fragmented.
+  // Empirically requires ~20KB contiguous heap to succeed; check before attempting.
+  if (ESP.getFreeHeap() < 24576) {
+    LOG_ERR("BadBLE", "Insufficient heap for BLE HID device");
+    RADIO.shutdown();
+    return false;
+  }
 
-  pHid = new BLEHIDDevice(pServer);
-  pHid->manufacturer()->setValue("biscuit");
-  pHid->pnp(0x02, 0x05AC, 0x820A, 0x0210);
-  pHid->hidInfo(0x00, 0x01);
-  pHid->reportMap(const_cast<uint8_t*>(HID_REPORT_DESCRIPTOR), sizeof(HID_REPORT_DESCRIPTOR));
-  pInputChar = pHid->inputReport(1);
-  pHid->startServices();
+  pServer = NimBLEDevice::createServer();
+  if (!serverCallbacks) serverCallbacks = std::make_unique<ServerCallbacks>(*this);
+  pServer->setCallbacks(serverCallbacks.get());
 
-  BLEAdvertising* pAdv = pServer->getAdvertising();
+  pHid = new NimBLEHIDDevice(pServer);
+  pHid->setManufacturer("biscuit");
+  pHid->setPnp(0x02, 0x05AC, 0x820A, 0x0210);
+  pHid->setHidInfo(0x00, 0x01);
+  pHid->setReportMap(const_cast<uint8_t*>(HID_REPORT_DESCRIPTOR), sizeof(HID_REPORT_DESCRIPTOR));
+  pInputChar = pHid->getInputReport(1);
+
+  NimBLEAdvertising* pAdv = pServer->getAdvertising();
   pAdv->setAppearance(0x03C1);
-  pAdv->addServiceUUID(pHid->hidService()->getUUID());
+  pAdv->addServiceUUID(pHid->getHidService()->getUUID());
+  // startServices() is deprecated in NimBLE-Arduino 2.x — services now start
+  // automatically when the server starts.
+  pServer->start();
   pAdv->start();
 
   LOG_DBG("BadBLE", "Advertising as '%s'", BLE_DEVICE_NAME);
+  return true;
 }
 
 void BleKeyboardActivity::stopAdvertising() {
-  if (pServer) pServer->getAdvertising()->stop();
+  if (pServer) {
+    pServer->getAdvertising()->stop();
+    pServer = nullptr;
+  }
+  pHid = nullptr;
+  pInputChar = nullptr;
   deviceConnected = false;
 }
 
@@ -196,9 +215,7 @@ void BleKeyboardActivity::sendKey(uint8_t keyCode, uint8_t modifiers) {
   releaseKeys();
 }
 
-void BleKeyboardActivity::sendKeyCombo(uint8_t modifiers, uint8_t keyCode) {
-  sendKey(keyCode, modifiers);
-}
+void BleKeyboardActivity::sendKeyCombo(uint8_t modifiers, uint8_t keyCode) { sendKey(keyCode, modifiers); }
 
 void BleKeyboardActivity::releaseKeys() {
   if (!pInputChar || !deviceConnected) return;
@@ -222,31 +239,68 @@ uint8_t BleKeyboardActivity::charToKeyCode(char c) {
   if (c >= '1' && c <= '9') return 0x1E + (c - '1');
   if (c == '0') return 0x27;
   switch (c) {
-    case '\n': case '\r': return 0x28;
-    case '\t': return 0x2B;
-    case ' ':  return 0x2C;
-    case '-': case '_': return 0x2D;
-    case '=': case '+': return 0x2E;
-    case '[': case '{': return 0x2F;
-    case ']': case '}': return 0x30;
-    case '\\': case '|': return 0x31;
-    case ';': case ':': return 0x33;
-    case '\'': case '"': return 0x34;
-    case '`': case '~': return 0x35;
-    case ',': case '<': return 0x36;
-    case '.': case '>': return 0x37;
-    case '/': case '?': return 0x38;
-    case '!': return 0x1E;
-    case '@': return 0x1F;
-    case '#': return 0x20;
-    case '$': return 0x21;
-    case '%': return 0x22;
-    case '^': return 0x23;
-    case '&': return 0x24;
-    case '*': return 0x25;
-    case '(': return 0x26;
-    case ')': return 0x27;
-    default: return 0;
+    case '\n':
+    case '\r':
+      return 0x28;
+    case '\t':
+      return 0x2B;
+    case ' ':
+      return 0x2C;
+    case '-':
+    case '_':
+      return 0x2D;
+    case '=':
+    case '+':
+      return 0x2E;
+    case '[':
+    case '{':
+      return 0x2F;
+    case ']':
+    case '}':
+      return 0x30;
+    case '\\':
+    case '|':
+      return 0x31;
+    case ';':
+    case ':':
+      return 0x33;
+    case '\'':
+    case '"':
+      return 0x34;
+    case '`':
+    case '~':
+      return 0x35;
+    case ',':
+    case '<':
+      return 0x36;
+    case '.':
+    case '>':
+      return 0x37;
+    case '/':
+    case '?':
+      return 0x38;
+    case '!':
+      return 0x1E;
+    case '@':
+      return 0x1F;
+    case '#':
+      return 0x20;
+    case '$':
+      return 0x21;
+    case '%':
+      return 0x22;
+    case '^':
+      return 0x23;
+    case '&':
+      return 0x24;
+    case '*':
+      return 0x25;
+    case '(':
+      return 0x26;
+    case ')':
+      return 0x27;
+    default:
+      return 0;
   }
 }
 
@@ -276,12 +330,18 @@ uint8_t BleKeyboardActivity::specialKeyCode(const std::string& keyName) {
   if (keyName == "PRINTSCREEN") return 0x46;
   if (keyName == "SCROLLLOCK") return 0x47;
   if (keyName == "PAUSE") return 0x48;
-  if (keyName == "F1") return 0x3A;  if (keyName == "F2") return 0x3B;
-  if (keyName == "F3") return 0x3C;  if (keyName == "F4") return 0x3D;
-  if (keyName == "F5") return 0x3E;  if (keyName == "F6") return 0x3F;
-  if (keyName == "F7") return 0x40;  if (keyName == "F8") return 0x41;
-  if (keyName == "F9") return 0x42;  if (keyName == "F10") return 0x43;
-  if (keyName == "F11") return 0x44; if (keyName == "F12") return 0x45;
+  if (keyName == "F1") return 0x3A;
+  if (keyName == "F2") return 0x3B;
+  if (keyName == "F3") return 0x3C;
+  if (keyName == "F4") return 0x3D;
+  if (keyName == "F5") return 0x3E;
+  if (keyName == "F6") return 0x3F;
+  if (keyName == "F7") return 0x40;
+  if (keyName == "F8") return 0x41;
+  if (keyName == "F9") return 0x42;
+  if (keyName == "F10") return 0x43;
+  if (keyName == "F11") return 0x44;
+  if (keyName == "F12") return 0x45;
   return 0;
 }
 
@@ -369,56 +429,114 @@ void BleKeyboardActivity::executeCurrentLine() {
 
   executeLine(scriptLines[currentLine]);
   currentLine++;
-  if (currentLine % 5 == 0) { yield(); }
+  if (currentLine % 5 == 0) {
+    yield();
+  }
   requestUpdate();
 }
 
 void BleKeyboardActivity::loop() {
   if (state == SELECT_SCRIPT) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) { finish(); return; }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      finish();
+      return;
+    }
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm) && !scriptFiles.empty()) {
       selectedScript = scriptFiles[selectedIndex];
-      { RenderLock lock(*this); loadScriptContent(selectedScript); }
+      {
+        RenderLock lock(*this);
+        loadScriptContent(selectedScript);
+      }
       state = PREVIEW;
       requestUpdate();
       return;
     }
     int listSize = static_cast<int>(scriptFiles.size());
-    buttonNavigator.onNext([this, listSize] { selectedIndex = ButtonNavigator::nextIndex(selectedIndex, listSize); requestUpdate(); });
-    buttonNavigator.onPrevious([this, listSize] { selectedIndex = ButtonNavigator::previousIndex(selectedIndex, listSize); requestUpdate(); });
+    buttonNavigator.onNext([this, listSize] {
+      selectedIndex = ButtonNavigator::nextIndex(selectedIndex, listSize);
+      requestUpdate();
+    });
+    buttonNavigator.onPrevious([this, listSize] {
+      selectedIndex = ButtonNavigator::previousIndex(selectedIndex, listSize);
+      requestUpdate();
+    });
     return;
   }
 
   if (state == PREVIEW) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) { state = SELECT_SCRIPT; requestUpdate(); return; }
-    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) { state = ADVERTISING; startAdvertising(); requestUpdate(); return; }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      state = SELECT_SCRIPT;
+      requestUpdate();
+      return;
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (startAdvertising()) {
+        state = ADVERTISING;
+      } else {
+        state = SELECT_SCRIPT;
+      }
+      requestUpdate();
+      return;
+    }
     return;
   }
 
   if (state == ADVERTISING) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) { stopAdvertising(); state = SELECT_SCRIPT; requestUpdate(); return; }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      stopAdvertising();
+      state = SELECT_SCRIPT;
+      requestUpdate();
+      return;
+    }
     return;
   }
 
   if (state == PAIRED) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) { stopAdvertising(); state = SELECT_SCRIPT; requestUpdate(); return; }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      stopAdvertising();
+      state = SELECT_SCRIPT;
+      requestUpdate();
+      return;
+    }
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-      state = EXECUTING; currentLine = 0; repeatCount = 0; delayUntil = 0; lastCommand.clear(); requestUpdate(); return;
+      state = EXECUTING;
+      currentLine = 0;
+      repeatCount = 0;
+      delayUntil = 0;
+      lastCommand.clear();
+      requestUpdate();
+      return;
     }
     return;
   }
 
   if (state == EXECUTING) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) { stopAdvertising(); state = DONE; requestUpdate(); return; }
-    if (!deviceConnected) { state = DONE; requestUpdate(); return; }
-    if (delayUntil > 0) { if (millis() < delayUntil) return; delayUntil = 0; }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      stopAdvertising();
+      state = DONE;
+      requestUpdate();
+      return;
+    }
+    if (!deviceConnected) {
+      state = DONE;
+      requestUpdate();
+      return;
+    }
+    if (delayUntil > 0) {
+      if (millis() < delayUntil) return;
+      delayUntil = 0;
+    }
     executeCurrentLine();
     return;
   }
 
   if (state == DONE) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) || mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-      stopAdvertising(); state = SELECT_SCRIPT; requestUpdate(); return;
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      stopAdvertising();
+      state = SELECT_SCRIPT;
+      requestUpdate();
+      return;
     }
   }
 }
@@ -439,15 +557,14 @@ void BleKeyboardActivity::render(RenderLock&&) {
       renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 10, "No scripts found");
       renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 15, "Place .txt files in /biscuit/ducky/");
     } else {
-      GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight},
-          static_cast<int>(scriptFiles.size()), selectedIndex,
-          [this](int index) {
-            std::string name = scriptFiles[index];
-            // Don't strip extension for built-in demo
-            if (name == BUILTIN_DEMO_NAME) return name;
-            if (name.size() > 4) name = name.substr(0, name.size() - 4);
-            return name;
-          });
+      GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(scriptFiles.size()),
+                   selectedIndex, [this](int index) {
+                     std::string name = scriptFiles[index];
+                     // Don't strip extension for built-in demo
+                     if (name == BUILTIN_DEMO_NAME) return name;
+                     if (name.size() > 4) name = name.substr(0, name.size() - 4);
+                     return name;
+                   });
     }
 
     const auto labels = mappedInput.mapLabels("Back", scriptFiles.empty() ? "" : "Select", "^", "v");

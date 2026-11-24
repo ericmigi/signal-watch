@@ -1,6 +1,9 @@
 #pragma once
+#include <HalStorage.h>
 #include <WebServer.h>
+
 #include <string>
+
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
 
@@ -36,7 +39,7 @@ class DeadDropActivity final : public Activity {
   static constexpr const char* DROP_DIR = "/biscuit/drop/";
 
   // Upload state
-  FsFile uploadFile;
+  HalFile uploadFile;
   bool uploadInProgress = false;
 
   void startDrop();

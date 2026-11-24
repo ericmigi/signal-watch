@@ -5,6 +5,8 @@
 #include <WiFi.h>
 #include <string.h>
 
+#include <algorithm>
+
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -51,8 +53,8 @@ void NetworkChangeActivity::takeSnapshot() {
       d.name[sizeof(d.name) - 1] = '\0';
 
       const uint8_t* bssid = WiFi.BSSID(i);
-      snprintf(d.mac, sizeof(d.mac), "%02X:%02X:%02X:%02X:%02X:%02X",
-               bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
+      snprintf(d.mac, sizeof(d.mac), "%02X:%02X:%02X:%02X:%02X:%02X", bssid[0], bssid[1], bssid[2], bssid[3], bssid[4],
+               bssid[5]);
       d.rssi = static_cast<int8_t>(WiFi.RSSI(i));
       d.type = 0;
       current.devices.push_back(d);
@@ -128,19 +130,15 @@ void NetworkChangeActivity::compareSnapshots() {
 
   // Devices in current but not in saved → NEW
   for (const auto& cd : current.devices) {
-    bool found = false;
-    for (const auto& sd : saved.devices) {
-      if (strcmp(cd.mac, sd.mac) == 0) { found = true; break; }
-    }
+    bool found = std::any_of(saved.devices.begin(), saved.devices.end(),
+                             [&](const Device& sd) { return strcmp(cd.mac, sd.mac) == 0; });
     if (!found) newDevices.push_back(cd);
   }
 
   // Devices in saved but not in current → GONE
   for (const auto& sd : saved.devices) {
-    bool found = false;
-    for (const auto& cd : current.devices) {
-      if (strcmp(cd.mac, sd.mac) == 0) { found = true; break; }
-    }
+    bool found = std::any_of(current.devices.begin(), current.devices.end(),
+                             [&](const Device& cd) { return strcmp(cd.mac, sd.mac) == 0; });
     if (!found) goneDevices.push_back(sd);
   }
 }
@@ -277,22 +275,19 @@ void NetworkChangeActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
 
   if (state == TAKING_SNAPSHOT || state == COMPARING) {
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                   "Network Change");
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Network Change");
     GUI.drawSpinner(renderer, pageWidth / 2, pageHeight / 2, "SCANNING...", spinnerFrame);
     renderer.displayBuffer();
     return;
   }
 
   if (state == MENU) {
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                   "Network Change");
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Network Change");
 
     const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
     const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
-    GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight},
-                 MENU_COUNT, menuIndex,
+    GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, MENU_COUNT, menuIndex,
                  [](int i) -> std::string { return NetworkChangeActivity::MENU_ITEMS[i]; });
 
     const auto labels = mappedInput.mapLabels("Back", "Select", "^", "v");
@@ -308,8 +303,7 @@ void NetworkChangeActivity::render(RenderLock&&) {
 
   char subtitle[32];
   snprintf(subtitle, sizeof(subtitle), "+%d / -%d devices", newCount, goneCount);
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Network Change", subtitle);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Network Change", subtitle);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
@@ -318,8 +312,7 @@ void NetworkChangeActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "No changes detected");
   } else {
     GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight},
-        total, resultIndex,
+        renderer, Rect{0, contentTop, pageWidth, contentHeight}, total, resultIndex,
         [this, newCount](int i) -> std::string {
           if (i < newCount) {
             char buf[40];

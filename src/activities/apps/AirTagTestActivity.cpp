@@ -1,8 +1,8 @@
 #include "AirTagTestActivity.h"
 
-#include <BLEDevice.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <NimBLEDevice.h>
 #include <esp_random.h>
 
 #include "MappedInputManager.h"
@@ -58,7 +58,7 @@ void AirTagTestActivity::startSpoofing(MacMode mode) {
   lastRotateTime = millis();
   lastAdvTime = 0;
 
-  pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->stop();
 
   generateRandomMac();
@@ -78,16 +78,15 @@ void AirTagTestActivity::sendAirTagAdvertisement() {
 
   pAdvertising->stop();
 
-  BLEAdvertisementData advData;
+  NimBLEAdvertisementData advData;
 
   // Apple Find My network payload
   // Company ID 0x004C (Apple) + Find My type/length + public key payload
   uint8_t findMyPayload[] = {
       0x12, 0x19,  // Find My type and length
       0x10,        // Status byte
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
       0x00,  // First byte of public key bits
       0x00,  // Hint
   };
@@ -103,7 +102,7 @@ void AirTagTestActivity::sendAirTagAdvertisement() {
   mfData += (char)0x00;
   mfData.append(reinterpret_cast<char*>(findMyPayload), sizeof(findMyPayload));
 
-  advData.setManufacturerData(String(mfData.data(), mfData.size()));
+  advData.setManufacturerData(mfData);
   pAdvertising->setAdvertisementData(advData);
   pAdvertising->start();
 
@@ -171,9 +170,8 @@ void AirTagTestActivity::render(RenderLock&&) {
     const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
     const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
-    GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight}, MODE_COUNT, modeIndex,
-        [](int index) { return std::string(MODE_NAMES[index]); });
+    GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, MODE_COUNT, modeIndex,
+                 [](int index) { return std::string(MODE_NAMES[index]); });
 
     const auto labels = mappedInput.mapLabels("Back", "Select", "^", "v");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

@@ -1,8 +1,8 @@
 #include "BleBeaconActivity.h"
 
-#include <BLEDevice.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <NimBLEDevice.h>
 #include <esp_random.h>
 
 #include "MappedInputManager.h"
@@ -62,7 +62,7 @@ void BleBeaconActivity::startSpam(SpamMode mode) {
   deviceTypeIndex = 0;
   platformIndex = 0;
 
-  pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->stop();
 
   requestUpdate();
@@ -92,10 +92,10 @@ void BleBeaconActivity::sendAppleJuicePacket() {
 
   pAdvertising->stop();
 
-  BLEAdvertisementData advData;
+  NimBLEAdvertisementData advData;
   // Apple manufacturer data: company ID 0x004C + proximity pairing prefix + device type
-  uint8_t data[] = {0x07, 0x19, 0x07, 0x02, 0x20, 0x75, 0xAA, 0x30, 0x01, 0x00, 0x00, 0x45,
-                    0x12, 0x12, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  uint8_t data[] = {0x07, 0x19, 0x07, 0x02, 0x20, 0x75, 0xAA, 0x30, 0x01, 0x00, 0x00, 0x45, 0x12,
+                    0x12, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   // Set device type
   data[3] = APPLE_DEVICE_TYPES[deviceTypeIndex][0];
   data[4] = APPLE_DEVICE_TYPES[deviceTypeIndex][1];
@@ -106,7 +106,7 @@ void BleBeaconActivity::sendAppleJuicePacket() {
   mfData += (char)0x00;
   mfData.append(reinterpret_cast<char*>(data), sizeof(data));
 
-  advData.setManufacturerData(String(mfData.data(), mfData.size()));
+  advData.setManufacturerData(mfData);
   pAdvertising->setAdvertisementData(advData);
   pAdvertising->start();
 
@@ -120,9 +120,9 @@ void BleBeaconActivity::sendSourApplePacket() {
   pAdvertising->stop();
   randomizeBleAddress();
 
-  BLEAdvertisementData advData;
-  uint8_t data[] = {0x07, 0x19, 0x07, 0x02, 0x20, 0x75, 0xAA, 0x30, 0x01, 0x00, 0x00, 0x45,
-                    0x12, 0x12, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  NimBLEAdvertisementData advData;
+  uint8_t data[] = {0x07, 0x19, 0x07, 0x02, 0x20, 0x75, 0xAA, 0x30, 0x01, 0x00, 0x00, 0x45, 0x12,
+                    0x12, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   data[3] = APPLE_DEVICE_TYPES[deviceTypeIndex][0];
   data[4] = APPLE_DEVICE_TYPES[deviceTypeIndex][1];
   // Randomize some bytes
@@ -135,7 +135,7 @@ void BleBeaconActivity::sendSourApplePacket() {
   mfData += (char)0x00;
   mfData.append(reinterpret_cast<char*>(data), sizeof(data));
 
-  advData.setManufacturerData(String(mfData.data(), mfData.size()));
+  advData.setManufacturerData(mfData);
   pAdvertising->setAdvertisementData(advData);
   pAdvertising->start();
 
@@ -148,10 +148,9 @@ void BleBeaconActivity::sendSamsungPacket() {
 
   pAdvertising->stop();
 
-  BLEAdvertisementData advData;
+  NimBLEAdvertisementData advData;
   // Samsung company ID 0x0075, Galaxy Buds format
-  uint8_t data[] = {0x42, 0x09, 0x01, 0x02, 0x05, 0x01, 0x00, 0x05,
-                    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  uint8_t data[] = {0x42, 0x09, 0x01, 0x02, 0x05, 0x01, 0x00, 0x05, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   // Randomize some payload bytes
   for (int i = 8; i < 16; i++) {
     data[i] = esp_random() & 0xFF;
@@ -162,7 +161,7 @@ void BleBeaconActivity::sendSamsungPacket() {
   mfData += (char)0x00;
   mfData.append(reinterpret_cast<char*>(data), sizeof(data));
 
-  advData.setManufacturerData(String(mfData.data(), mfData.size()));
+  advData.setManufacturerData(mfData);
   pAdvertising->setAdvertisementData(advData);
   pAdvertising->start();
 
@@ -174,15 +173,15 @@ void BleBeaconActivity::sendGoogleFastPairPacket() {
 
   pAdvertising->stop();
 
-  BLEAdvertisementData advData;
+  NimBLEAdvertisementData advData;
   // Google Fast Pair service data with UUID 0xFE2C
   uint32_t modelId = GOOGLE_MODEL_IDS[deviceTypeIndex % GOOGLE_MODEL_COUNT];
-  uint8_t svcData[] = {0x2C, 0xFE, (uint8_t)((modelId >> 16) & 0xFF), (uint8_t)((modelId >> 8) & 0xFF),
-                       (uint8_t)(modelId & 0xFF), 0x00};
+  uint8_t svcData[] = {
+      0x2C, 0xFE, (uint8_t)((modelId >> 16) & 0xFF), (uint8_t)((modelId >> 8) & 0xFF), (uint8_t)(modelId & 0xFF), 0x00};
 
   std::string serviceData;
   serviceData.append(reinterpret_cast<char*>(svcData), sizeof(svcData));
-  advData.setServiceData(BLEUUID((uint16_t)0xFE2C), String(serviceData.data(), serviceData.size()));
+  advData.setServiceData(NimBLEUUID((uint16_t)0xFE2C), serviceData);
 
   pAdvertising->setAdvertisementData(advData);
   pAdvertising->start();
@@ -196,7 +195,7 @@ void BleBeaconActivity::sendWindowsSwiftPairPacket() {
 
   pAdvertising->stop();
 
-  BLEAdvertisementData advData;
+  NimBLEAdvertisementData advData;
   // Microsoft company ID 0x0006, SwiftPair beacon
   uint8_t data[] = {0x03, 0x01, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
   // Randomize some bytes for variation
@@ -209,7 +208,7 @@ void BleBeaconActivity::sendWindowsSwiftPairPacket() {
   mfData += (char)0x00;
   mfData.append(reinterpret_cast<char*>(data), sizeof(data));
 
-  advData.setManufacturerData(String(mfData.data(), mfData.size()));
+  advData.setManufacturerData(mfData);
   pAdvertising->setAdvertisementData(advData);
   pAdvertising->start();
 
@@ -338,9 +337,8 @@ void BleBeaconActivity::render(RenderLock&&) {
     const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
     const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
-    GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight}, MODE_COUNT, modeIndex,
-        [](int index) { return std::string(MODE_NAMES[index]); });
+    GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, MODE_COUNT, modeIndex,
+                 [](int index) { return std::string(MODE_NAMES[index]); });
 
     const auto labels = mappedInput.mapLabels("Back", "Select", "^", "v");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

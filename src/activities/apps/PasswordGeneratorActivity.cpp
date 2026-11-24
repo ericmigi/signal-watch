@@ -63,7 +63,8 @@ void PasswordGeneratorActivity::loop() {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       state = ENTER_SITE;
       startActivityForResult(
-          std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, std::string(tr(STR_SITE)), "", 64),
+          std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, std::string(tr(STR_SITE)), "", 64,
+                                                  InputType::Text, /*allowBleKeyboard=*/true),
           [this](const ActivityResult& result) {
             if (result.isCancelled) {
               state = GENERATING;
@@ -73,7 +74,8 @@ void PasswordGeneratorActivity::loop() {
             site = std::get<KeyboardResult>(result.data).text;
             state = ENTER_USERNAME;
             startActivityForResult(
-                std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, std::string(tr(STR_USERNAME)), "", 64),
+                std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, std::string(tr(STR_USERNAME)), "", 64,
+                                                        InputType::Text, /*allowBleKeyboard=*/true),
                 [this](const ActivityResult& result2) {
                   if (result2.isCancelled) {
                     state = GENERATING;
@@ -112,7 +114,6 @@ void PasswordGeneratorActivity::render(RenderLock&&) {
   }
 
   // Show generated password
-  const int leftPad = metrics.contentSidePadding;
   int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 40;
 
   // Length indicator

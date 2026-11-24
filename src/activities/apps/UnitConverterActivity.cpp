@@ -28,10 +28,7 @@ const std::vector<UnitConverterActivity::Category>& UnitConverterActivity::getCa
         {"Pound", "lb", 0.453592, 0},
         {"Ounce", "oz", 0.0283495, 0},
         {"Ton", "t", 1000.0, 0}}},
-      {"Temperature",
-       {{"Celsius", "C", 1.0, 0},
-        {"Fahrenheit", "F", 0.5556, -17.7778},
-        {"Kelvin", "K", 1.0, -273.15}}},
+      {"Temperature", {{"Celsius", "C", 1.0, 0}, {"Fahrenheit", "F", 0.5556, -17.7778}, {"Kelvin", "K", 1.0, -273.15}}},
       {"Data",
        {{"Byte", "B", 1.0, 0},
         {"Kilobyte", "KB", 1024.0, 0},
@@ -75,7 +72,7 @@ void UnitConverterActivity::computeConversions() {
 
   for (int i = 0; i < static_cast<int>(cat.units.size()); i++) {
     if (i == unitIndex) continue;
-    auto& toUnit = cat.units[i];
+    const auto& toUnit = cat.units[i];
     double result;
 
     if (isTemp) {
@@ -254,9 +251,8 @@ void UnitConverterActivity::renderCategorySelect() const {
   int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
   auto& cats = getCategories();
-  GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(cats.size()), categoryIndex,
-      [&cats](int i) { return std::string(cats[i].name); });
+  GUI.drawList(renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(cats.size()), categoryIndex,
+               [&cats](int i) { return std::string(cats[i].name); });
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -292,12 +288,12 @@ void UnitConverterActivity::renderInputValue() const {
   y += 40;
 
   // Show value with cursor indicator
-  std::string display = valueStr;
-  if (cursorPos >= 1 && cursorPos <= static_cast<int>(display.size())) {
-    display.insert(cursorPos, "]");
-    display.insert(cursorPos - 1, "[");
+  std::string displayStr = valueStr;
+  if (cursorPos >= 1 && cursorPos <= static_cast<int>(displayStr.size())) {
+    displayStr.insert(cursorPos, "]");
+    displayStr.insert(cursorPos - 1, "[");
   }
-  renderer.drawCenteredText(UI_12_FONT_ID, y, display.c_str(), true, EpdFontFamily::BOLD);
+  renderer.drawCenteredText(UI_12_FONT_ID, y, displayStr.c_str(), true, EpdFontFamily::BOLD);
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), "Convert", "<", ">");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -310,8 +306,8 @@ void UnitConverterActivity::renderResults() const {
   const auto pageHeight = renderer.getScreenHeight();
   const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
 
-  auto& cat = getCategories()[categoryIndex];
-  auto& unit = cat.units[unitIndex];
+  const auto& cat = getCategories()[categoryIndex];
+  const auto& unit = cat.units[unitIndex];
   int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 2;
 
   char fromBuf[64];
@@ -319,7 +315,7 @@ void UnitConverterActivity::renderResults() const {
   renderer.drawText(UI_12_FONT_ID, metrics.contentSidePadding, y, fromBuf, true, EpdFontFamily::BOLD);
   y += lineH + 15;
 
-  for (auto& line : conversionResults) {
+  for (const auto& line : conversionResults) {
     if (y > pageHeight - metrics.buttonHintsHeight - 10) break;
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding + 10, y, line.c_str());
     y += lineH + 3;

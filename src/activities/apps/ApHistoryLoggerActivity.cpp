@@ -3,6 +3,8 @@
 #include <HalStorage.h>
 #include <WiFi.h>
 
+#include <algorithm>
+
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -53,8 +55,7 @@ void ApHistoryLoggerActivity::doScan() {
 
     // Track unique BSSIDs
     uint64_t id = bssidToU64(bssid);
-    bool seen = false;
-    for (uint64_t v : seenBssids) { if (v == id) { seen = true; break; } }
+    bool seen = std::any_of(seenBssids.begin(), seenBssids.end(), [id](uint64_t v) { return v == id; });
     if (!seen && static_cast<int>(seenBssids.size()) < MAX_SEEN) {
       seenBssids.push_back(id);
     }
@@ -63,12 +64,10 @@ void ApHistoryLoggerActivity::doScan() {
       String ssid = WiFi.SSID(i);
       // Escape commas in SSID
       std::string ssidStr = ssid.c_str();
-      for (auto& c : ssidStr) { if (c == ',') c = ';'; }
+      std::replace_if(ssidStr.begin(), ssidStr.end(), [](char c) { return c == ','; }, ';');
 
-      snprintf(line, sizeof(line), "%lu,%s,%02X:%02X:%02X:%02X:%02X:%02X,%d,%d",
-               ts, ssidStr.c_str(),
-               bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
-               static_cast<int>(WiFi.RSSI(i)),
+      snprintf(line, sizeof(line), "%lu,%s,%02X:%02X:%02X:%02X:%02X:%02X,%d,%d", ts, ssidStr.c_str(), bssid[0],
+               bssid[1], bssid[2], bssid[3], bssid[4], bssid[5], static_cast<int>(WiFi.RSSI(i)),
                static_cast<int>(WiFi.channel(i)));
       f.println(line);
     }
@@ -87,7 +86,10 @@ void ApHistoryLoggerActivity::doScan() {
 
 void ApHistoryLoggerActivity::loop() {
   if (state == CONFIG) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) { finish(); return; }
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      finish();
+      return;
+    }
     buttonNavigator.onNext([this] {
       intervalIndex = ButtonNavigator::nextIndex(intervalIndex, NUM_INTERVALS);
       requestUpdate();
@@ -122,7 +124,10 @@ void ApHistoryLoggerActivity::loop() {
   }
 
   // STATS
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) { finish(); return; }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    finish();
+    return;
+  }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     // Restart
     state = CONFIG;

@@ -65,6 +65,7 @@ All apps in Recon are read-only — they listen but never transmit.
 | WiFi Heat Map | RSSI mapping walkabout |
 | Signal Locator | Estimate AP position via RSSI triangulation |
 | Deauth Detector | Monitor for deauthentication frame spikes |
+| Flock-You | Detect Flock Safety cameras from their WiFi traffic |
 
 ### Offense — active wireless testing
 

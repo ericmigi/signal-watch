@@ -1,81 +1,63 @@
 #include "CrossPointState.h"
 
-#include <HalStorage.h>
-#include <JsonSettingsIO.h>
-#include <Logging.h>
-#include <Serialization.h>
-
 namespace {
-constexpr uint8_t STATE_FILE_VERSION = 4;
-constexpr char STATE_FILE_BIN[] = "/.crosspoint/state.bin";
-constexpr char STATE_FILE_JSON[] = "/.crosspoint/state.json";
-constexpr char STATE_FILE_BAK[] = "/.crosspoint/state.bin.bak";
+
+void getLCG(uint32_t packedState, uint32_t packedCount, uint32_t& seed, uint32_t& state, uint16_t& indexesLeft,
+            uint16_t& indexesTotal) {
+  indexesLeft = packedCount >> 16;
+  indexesTotal = packedCount & 0xffff;
+  seed = packedState >> 16;
+  state = packedState & 0xffff;
+}
+
+void setLCG(uint32_t& packedState, uint32_t& packedCount, uint32_t seedVal, uint32_t stateVal, uint16_t indexesLeftVal,
+            uint16_t indexesTotalVal) {
+  packedCount = (static_cast<uint32_t>(indexesLeftVal) << 16) | indexesTotalVal;
+  packedState = (seedVal << 16) | (stateVal & 0xffff);
+}
+
 }  // namespace
 
-CrossPointState CrossPointState::instance;
-
-bool CrossPointState::saveToFile() const {
-  Storage.mkdir("/.crosspoint");
-  return JsonSettingsIO::saveState(*this, STATE_FILE_JSON);
+void CrossPointState::getSleepLCG(uint32_t& seed, uint32_t& state, uint16_t& indexesLeft,
+                                  uint16_t& indexesTotal) const {
+  getLCG(sleepLcgState, sleepLcgCount, seed, state, indexesLeft, indexesTotal);
 }
 
-bool CrossPointState::loadFromFile() {
-  // Try JSON first
-  if (Storage.exists(STATE_FILE_JSON)) {
-    String json = Storage.readFile(STATE_FILE_JSON);
-    if (!json.isEmpty()) {
-      return JsonSettingsIO::loadState(*this, json.c_str());
-    }
-  }
-
-  // Fall back to binary migration
-  if (Storage.exists(STATE_FILE_BIN)) {
-    if (loadFromBinaryFile()) {
-      if (saveToFile()) {
-        Storage.rename(STATE_FILE_BIN, STATE_FILE_BAK);
-        LOG_DBG("CPS", "Migrated state.bin to state.json");
-        return true;
-      } else {
-        LOG_ERR("CPS", "Failed to save state during migration");
-        return false;
-      }
-    }
-  }
-
-  return false;
+void CrossPointState::getSleepOverlayLCG(uint32_t& seed, uint32_t& state, uint16_t& indexesLeft,
+                                         uint16_t& indexesTotal) const {
+  getLCG(sleepOverlayLcgState, sleepOverlayLcgCount, seed, state, indexesLeft, indexesTotal);
 }
 
-bool CrossPointState::loadFromBinaryFile() {
-  FsFile inputFile;
-  if (!Storage.openFileForRead("CPS", STATE_FILE_BIN, inputFile)) {
-    return false;
-  }
+void CrossPointState::setSleepLCG(uint32_t seed, uint32_t state, uint16_t indexesLeft, uint16_t indexesTotal) {
+  setLCG(sleepLcgState, sleepLcgCount, seed, state, indexesLeft, indexesTotal);
+}
 
-  uint8_t version;
-  serialization::readPod(inputFile, version);
-  if (version > STATE_FILE_VERSION) {
-    LOG_ERR("CPS", "Deserialization failed: Unknown version %u", version);
-    inputFile.close();
-    return false;
-  }
+void CrossPointState::setSleepOverlayLCG(uint32_t seed, uint32_t state, uint16_t indexesLeft, uint16_t indexesTotal) {
+  setLCG(sleepOverlayLcgState, sleepOverlayLcgCount, seed, state, indexesLeft, indexesTotal);
+}
 
-  serialization::readString(inputFile, openEpubPath);
-  if (version >= 2) {
-    serialization::readPod(inputFile, lastSleepImage);
-  } else {
-    lastSleepImage = UINT8_MAX;
-  }
+void CrossPointState::toJson(JsonDocument& doc) const {
+  doc["openEpubPath"] = openEpubPath;
+  doc["sleepLcgCount"] = sleepLcgCount;
+  doc["sleepLcgState"] = sleepLcgState;
+  doc["sleepOverlayLcgCount"] = sleepOverlayLcgCount;
+  doc["sleepOverlayLcgState"] = sleepOverlayLcgState;
+  doc["readerActivityLoadCount"] = readerActivityLoadCount;
+  doc["lastSleepFromReader"] = lastSleepFromReader;
+  doc["showBootScreen"] = showBootScreen;
+}
 
-  if (version >= 3) {
-    serialization::readPod(inputFile, readerActivityLoadCount);
-  }
+bool CrossPointState::fromJson(JsonVariantConst doc) {
+  openEpubPath = doc["openEpubPath"] | "";
 
-  if (version >= 4) {
-    serialization::readPod(inputFile, lastSleepFromReader);
-  } else {
-    lastSleepFromReader = false;
-  }
+  sleepLcgCount = doc["sleepLcgCount"] | static_cast<uint32_t>(0);
+  sleepLcgState = doc["sleepLcgState"] | static_cast<uint32_t>(0);
 
-  inputFile.close();
+  sleepOverlayLcgCount = doc["sleepOverlayLcgCount"] | static_cast<uint32_t>(0);
+  sleepOverlayLcgState = doc["sleepOverlayLcgState"] | static_cast<uint32_t>(0);
+
+  readerActivityLoadCount = doc["readerActivityLoadCount"] | static_cast<uint8_t>(0);
+  lastSleepFromReader = doc["lastSleepFromReader"] | false;
+  showBootScreen = doc["showBootScreen"] | true;
   return true;
 }

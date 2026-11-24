@@ -1,7 +1,9 @@
 #include "AppCategoryActivity.h"
 
-#include <I18n.h>
 #include <HalStorage.h>
+#include <I18n.h>
+
+#include <algorithm>
 #include <cstring>
 
 #include "MappedInputManager.h"
@@ -77,9 +79,10 @@ void AppCategoryActivity::loop() {
       if (categoryIndex >= 0) {
         char path[40];
         snprintf(path, sizeof(path), "/biscuit/lastused_%d.txt", categoryIndex);
-        FsFile file;
+        HalFile file;
         if (Storage.openFileForWrite("APPS", path, file)) {
-          file.write((const uint8_t*)entries[selectorIndex].nameStrId, strlen(entries[selectorIndex].nameStrId));
+          file.write(reinterpret_cast<const uint8_t*>(entries[selectorIndex].nameStrId),
+                     strlen(entries[selectorIndex].nameStrId));
           file.close();
         }
       }
@@ -109,7 +112,7 @@ void AppCategoryActivity::loop() {
     if (heldTime >= 2500) {
       onGoHome();  // Long-press: go straight to dashboard
     } else {
-      finish();    // Short press: go back one level
+      finish();  // Short press: go back one level
     }
     return;
   }
@@ -137,10 +140,8 @@ void AppCategoryActivity::render(RenderLock&&) {
 
   // Item count subtitle (exclude section headers)
   const int count = static_cast<int>(entries.size());
-  int appCount = 0;
-  for (const auto& e : entries) {
-    if (!e.isSectionHeader) appCount++;
-  }
+  const int appCount =
+      static_cast<int>(std::count_if(entries.begin(), entries.end(), [](const auto& e) { return !e.isSectionHeader; }));
   char countStr[16];
   snprintf(countStr, sizeof(countStr), "%d items", appCount);
 
@@ -153,21 +154,21 @@ void AppCategoryActivity::render(RenderLock&&) {
   GUI.drawList(
       renderer, Rect{0, listTop, pageWidth, listHeight}, count, selectorIndex,
       [this](int index) -> std::string {
-          if (entries[index].isSectionHeader) {
-            return std::string("\xE2\x94\x80\xE2\x94\x80 ") + entries[index].nameStrId + " \xE2\x94\x80\xE2\x94\x80";
-          }
-          return entries[index].nameStrId;
+        if (entries[index].isSectionHeader) {
+          return std::string("\xE2\x94\x80\xE2\x94\x80 ") + entries[index].nameStrId + " \xE2\x94\x80\xE2\x94\x80";
+        }
+        return entries[index].nameStrId;
       },
       [this](int index) -> std::string {
-          if (entries[index].isSectionHeader) return "";
-          return entries[index].description ? std::string(entries[index].description) : "";
+        if (entries[index].isSectionHeader) return "";
+        return entries[index].description ? std::string(entries[index].description) : "";
       },
       [this](int index) -> UIIcon { return entries[index].icon; },
       [this](int index) -> std::string {
-          if (entries[index].hasActiveState && entries[index].hasActiveState()) {
-            return "\xE2\x97\x8F";  // ● (UTF-8 black circle)
-          }
-          return "";
+        if (entries[index].hasActiveState && entries[index].hasActiveState()) {
+          return "\xE2\x97\x8F";  // ● (UTF-8 black circle)
+        }
+        return "";
       });
 
   // === Button hints ===

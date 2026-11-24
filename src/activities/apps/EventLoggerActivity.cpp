@@ -76,7 +76,10 @@ void EventLoggerActivity::onExit() { Activity::onExit(); }
 
 void EventLoggerActivity::loop() {
   if (state == LOG_LIST) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) { finish(); return; }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      finish();
+      return;
+    }
     if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
       selectedIndex = ButtonNavigator::previousIndex(selectedIndex, (int)entries.size());
       requestUpdate();
@@ -92,7 +95,8 @@ void EventLoggerActivity::loop() {
     if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
       state = COMPOSE;
       startActivityForResult(
-          std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "New Note", "", 127),
+          std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, "New Note", "", 127, InputType::Text,
+                                                  /*allowBleKeyboard=*/true),
           [this](const ActivityResult& r) {
             state = LOG_LIST;
             if (!r.isCancelled) {
@@ -121,8 +125,10 @@ void EventLoggerActivity::render(RenderLock&&) {
   const int pageWidth = renderer.getScreenWidth();
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Event Logger");
 
-  if (state == LOG_LIST) renderList();
-  else if (state == VIEW_ENTRY) renderView();
+  if (state == LOG_LIST)
+    renderList();
+  else if (state == VIEW_ENTRY)
+    renderView();
 
   renderer.displayBuffer();
 }
@@ -137,13 +143,14 @@ void EventLoggerActivity::renderList() const {
   if (entries.empty()) {
     renderer.drawCenteredText(UI_10_FONT_ID, listTop + listH / 2, "No entries. Right=Compose");
   } else {
-    GUI.drawList(renderer, Rect{0, listTop, pageWidth, listH}, (int)entries.size(), selectedIndex,
-      [this](int i) -> std::string { return entries[i].text; },
-      [this](int i) -> std::string {
-        char buf[16];
-        formatTimestamp(entries[i].timestampMs, buf, sizeof(buf));
-        return buf;
-      });
+    GUI.drawList(
+        renderer, Rect{0, listTop, pageWidth, listH}, (int)entries.size(), selectedIndex,
+        [this](int i) -> std::string { return entries[i].text; },
+        [this](int i) -> std::string {
+          char buf[16];
+          formatTimestamp(entries[i].timestampMs, buf, sizeof(buf));
+          return buf;
+        });
   }
 
   const auto labels = mappedInput.mapLabels("Back", "View", "", "New");
@@ -152,8 +159,6 @@ void EventLoggerActivity::renderList() const {
 
 void EventLoggerActivity::renderView() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-  const int pageHeight = renderer.getScreenHeight();
   const int top = metrics.topPadding + metrics.headerHeight + 10;
 
   if (selectedIndex < 0 || selectedIndex >= (int)entries.size()) return;

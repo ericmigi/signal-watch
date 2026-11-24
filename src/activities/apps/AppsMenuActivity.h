@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
 
@@ -8,14 +9,16 @@ struct RadarHomeStatus;
 
 class AppsMenuActivity final : public Activity {
  public:
-  explicit AppsMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("AppsMenu", renderer, mappedInput) {}
+  explicit AppsMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool cleanInitialRefresh = false)
+      : Activity("AppsMenu", renderer, mappedInput), cleanInitialRefresh(cleanInitialRefresh) {}
 
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
 
  private:
+  const bool cleanInitialRefresh;
+  bool firstRenderDone = false;
   int selectorIndex = 0;
   static constexpr int ITEM_COUNT = 8;
   static constexpr int COLS = 2;
@@ -28,16 +31,16 @@ class AppsMenuActivity final : public Activity {
   // Cached system info (refreshed on enter + periodically)
   uint32_t freeHeap = 0;
   uint8_t batteryPercent = 0;
-  unsigned long uptimeSeconds = 0;
   bool wifiConnected = false;
   unsigned long lastInfoRefresh = 0;
   static constexpr unsigned long INFO_REFRESH_MS = 30000;
-  char uptimeStr[16] = "";
+  char clockStr[9] = "";
+  bool clockAvailable = false;
 
   // Badge counts (refreshed with system info)
-  int badgeRecon = 0;       // tracker alerts count
-  int badgeSecurity = -1;   // 0 = ok, -1 = PIN not set (show "!")
-  int badgeSystem = 0;      // firmware update available
+  int badgeRecon = 0;      // tracker alerts count
+  int badgeSecurity = -1;  // 0 = ok, -1 = PIN not set (show "!")
+  int badgeSystem = 0;     // firmware update available
 
   void refreshSystemInfo();
 
@@ -48,5 +51,4 @@ class AppsMenuActivity final : public Activity {
   // Tile rendering
   void drawTile(int index, int x, int y, int w, int h, bool selected) const;
   void drawStatusBar() const;
-
 };

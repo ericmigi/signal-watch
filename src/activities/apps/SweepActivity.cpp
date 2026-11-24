@@ -1,9 +1,7 @@
 #include "SweepActivity.h"
 
-#include <BLEAdvertisedDevice.h>
-#include <BLEDevice.h>
-#include <BLEScan.h>
 #include <Logging.h>
+#include <NimBLEDevice.h>
 #include <WiFi.h>
 
 #include <cctype>
@@ -15,12 +13,14 @@
 #include "util/RadioManager.h"
 
 // Known camera SSID substrings (uppercase for case-insensitive match)
-static const char* const CAMERA_PATTERNS[] = {
-    "IPCAM", "HIKAM", "YI-", "EZVIZ", "WYZE", "TAPO", "REOLINK", "HIKVISION", "DAHUA"};
+static const char* const CAMERA_PATTERNS[] = {"IPCAM", "HIKAM",   "YI-",       "EZVIZ", "WYZE",
+                                              "TAPO",  "REOLINK", "HIKVISION", "DAHUA"};
 static constexpr int CAMERA_PATTERN_COUNT = 9;
 
 // Known skimmer OUI prefixes (first 3 bytes)
-struct SkimmerOui { uint8_t b0, b1, b2; };
+struct SkimmerOui {
+  uint8_t b0, b1, b2;
+};
 static const SkimmerOui SKIMMER_OUIS[] = {
     {0x00, 0x14, 0x03},
     {0x20, 0x15, 0x05},
@@ -36,9 +36,7 @@ static void toUpperBuf(const char* src, char* dst, size_t dstLen) {
   dst[i] = '\0';
 }
 
-static bool containsSubstr(const char* haystack, const char* needle) {
-  return strstr(haystack, needle) != nullptr;
-}
+static bool containsSubstr(const char* haystack, const char* needle) { return strstr(haystack, needle) != nullptr; }
 
 // ---- lifecycle --------------------------------------------------------------
 
@@ -121,12 +119,10 @@ void SweepActivity::scanWifiKarma() {
         uint8_t* bssid = WiFi.BSSID(i);
         char buf[80];
         if (bssid) {
-          snprintf(buf, sizeof(buf), "Hidden AP: %02X:%02X:%02X:%02X:%02X:%02X ch%d %ddBm",
-                   bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
-                   WiFi.channel(i), WiFi.RSSI(i));
+          snprintf(buf, sizeof(buf), "Hidden AP: %02X:%02X:%02X:%02X:%02X:%02X ch%d %ddBm", bssid[0], bssid[1],
+                   bssid[2], bssid[3], bssid[4], bssid[5], WiFi.channel(i), WiFi.RSSI(i));
         } else {
-          snprintf(buf, sizeof(buf), "Hidden AP: unknown ch%d %ddBm",
-                   WiFi.channel(i), WiFi.RSSI(i));
+          snprintf(buf, sizeof(buf), "Hidden AP: unknown ch%d %ddBm", WiFi.channel(i), WiFi.RSSI(i));
         }
         addFinding(buf, 1);
         rogueAps++;
@@ -139,91 +135,84 @@ void SweepActivity::scanWifiKarma() {
 void SweepActivity::scanBleThreats() {
   RADIO.ensureBle();  // shuts down WiFi first, then starts BLE
 
-  BLEScan* scan = BLEDevice::getScan();
+  NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setActiveScan(true);
-  scan->start(1);  // 1-second blocking scan (shorter to reduce UI freeze)
+  // Blocking scan for 1 second (shorter to reduce UI freeze) — getResults(duration)
+  // performs the scan and returns the collected results in one call.
+  NimBLEScanResults results = scan->getResults(1);
 
-  BLEScanResults* results = scan->getResults();
-  if (results) {
-    int count = results->getCount();
-    for (int i = 0; i < count; i++) {
-      BLEAdvertisedDevice dev = results->getDevice(i);
-      std::string mac = dev.getAddress().toString().c_str();
-      int8_t rssi = static_cast<int8_t>(dev.getRSSI());
+  int count = results.getCount();
+  for (int i = 0; i < count; i++) {
+    const NimBLEAdvertisedDevice* dev = results.getDevice(i);
+    std::string mac = dev->getAddress().toString().c_str();
+    int8_t rssi = static_cast<int8_t>(dev->getRSSI());
 
-      bool isTracker = false;
-      bool isSkimmer = false;
-      const char* trackerLabel = nullptr;
+    bool isTracker = false;
+    bool isSkimmer = false;
+    const char* trackerLabel = nullptr;
 
-      // --- Tracker detection ---
-      if (dev.haveManufacturerData()) {
-        String mfRaw = dev.getManufacturerData();
-        const uint8_t* mf = reinterpret_cast<const uint8_t*>(mfRaw.c_str());
-        size_t mfLen = static_cast<size_t>(mfRaw.length());
+    // --- Tracker detection ---
+    if (dev->haveManufacturerData()) {
+      std::string mfRaw = dev->getManufacturerData();
+      const uint8_t* mf = reinterpret_cast<const uint8_t*>(mfRaw.c_str());
+      size_t mfLen = mfRaw.length();
 
-        if (mfLen >= 2) {
-          uint16_t companyId = mf[0] | (static_cast<uint16_t>(mf[1]) << 8);
+      if (mfLen >= 2) {
+        uint16_t companyId = mf[0] | (static_cast<uint16_t>(mf[1]) << 8);
 
-          // Apple Find My / AirTag: company 0x004C, length > 4
-          if (companyId == 0x004C && mfLen > 4) {
-            isTracker = true;
-            trackerLabel = (mfLen >= 5 && mf[2] == 0x12 && mf[3] == 0x19)
-                               ? "AirTag"
-                               : "Apple FindMy";
-          }
-
-          // Samsung SmartTag: company 0x0075
-          if (companyId == 0x0075) {
-            isTracker = true;
-            trackerLabel = "SmartTag";
-          }
-        }
-      }
-
-      // Tile: service UUID contains "feed"
-      if (!isTracker && dev.haveServiceUUID()) {
-        std::string svc = dev.getServiceUUID().toString().c_str();
-        if (svc.find("feed") != std::string::npos || svc.find("FEED") != std::string::npos) {
+        // Apple Find My / AirTag: company 0x004C, length > 4
+        if (companyId == 0x004C && mfLen > 4) {
           isTracker = true;
-          trackerLabel = "Tile";
+          trackerLabel = (mfLen >= 5 && mf[2] == 0x12 && mf[3] == 0x19) ? "AirTag" : "Apple FindMy";
+        }
+
+        // Samsung SmartTag: company 0x0075
+        if (companyId == 0x0075) {
+          isTracker = true;
+          trackerLabel = "SmartTag";
         }
       }
+    }
 
-      // --- Skimmer OUI check ---
-      // BLE address: parse first 3 bytes from "XX:XX:XX:XX:XX:XX"
-      uint8_t addrBytes[6] = {};
-      if (mac.length() >= 17) {
-        unsigned int v[6];
-        if (sscanf(mac.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
-                   &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) {
-          for (int b = 0; b < 6; b++) addrBytes[b] = static_cast<uint8_t>(v[b]);
-        }
+    // Tile: service UUID contains "feed"
+    if (!isTracker && dev->haveServiceUUID()) {
+      std::string svc = dev->getServiceUUID().toString();
+      if (svc.find("feed") != std::string::npos || svc.find("FEED") != std::string::npos) {
+        isTracker = true;
+        trackerLabel = "Tile";
       }
-      for (int o = 0; o < SKIMMER_OUI_COUNT; o++) {
-        if (addrBytes[0] == SKIMMER_OUIS[o].b0 &&
-            addrBytes[1] == SKIMMER_OUIS[o].b1 &&
-            addrBytes[2] == SKIMMER_OUIS[o].b2) {
-          isSkimmer = true;
-          break;
-        }
-      }
+    }
 
-      if (isTracker) {
-        char buf[80];
-        snprintf(buf, sizeof(buf), "Tracker: %s [%s] %ddBm",
-                 trackerLabel ? trackerLabel : "Unknown",
-                 mac.c_str(), static_cast<int>(rssi));
-        addFinding(buf, 2);
-        trackersFound++;
+    // --- Skimmer OUI check ---
+    // BLE address: parse first 3 bytes from "XX:XX:XX:XX:XX:XX"
+    uint8_t addrBytes[6] = {};
+    if (mac.length() >= 17) {
+      unsigned int v[6];
+      if (sscanf(mac.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6) {
+        for (int b = 0; b < 6; b++) addrBytes[b] = static_cast<uint8_t>(v[b]);
       }
+    }
+    for (int o = 0; o < SKIMMER_OUI_COUNT; o++) {
+      if (addrBytes[0] == SKIMMER_OUIS[o].b0 && addrBytes[1] == SKIMMER_OUIS[o].b1 &&
+          addrBytes[2] == SKIMMER_OUIS[o].b2) {
+        isSkimmer = true;
+        break;
+      }
+    }
 
-      if (isSkimmer) {
-        char buf[80];
-        snprintf(buf, sizeof(buf), "Suspicious BLE: %s (skimmer OUI) %ddBm",
-                 mac.c_str(), static_cast<int>(rssi));
-        addFinding(buf, 2);
-        skimmers++;
-      }
+    if (isTracker) {
+      char buf[80];
+      snprintf(buf, sizeof(buf), "Tracker: %s [%s] %ddBm", trackerLabel ? trackerLabel : "Unknown", mac.c_str(),
+               static_cast<int>(rssi));
+      addFinding(buf, 2);
+      trackersFound++;
+    }
+
+    if (isSkimmer) {
+      char buf[80];
+      snprintf(buf, sizeof(buf), "Suspicious BLE: %s (skimmer OUI) %ddBm", mac.c_str(), static_cast<int>(rssi));
+      addFinding(buf, 2);
+      skimmers++;
     }
   }
 
@@ -306,9 +295,15 @@ void SweepActivity::loop() {
 void SweepActivity::render(RenderLock&&) {
   renderer.clearScreen();
   switch (state) {
-    case READY:   renderReady();    break;
-    case SCANNING: renderScanning(); break;
-    case RESULTS: renderResults();  break;
+    case READY:
+      renderReady();
+      break;
+    case SCANNING:
+      renderScanning();
+      break;
+    case RESULTS:
+      renderResults();
+      break;
   }
   renderer.displayBuffer();
 }
@@ -318,8 +313,7 @@ void SweepActivity::renderReady() const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Security Sweep");
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Security Sweep");
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int centerY = contentTop + (pageHeight - contentTop - metrics.buttonHintsHeight) / 2;
@@ -339,18 +333,25 @@ void SweepActivity::renderScanning() const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Scanning...");
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Scanning...");
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int centerY = contentTop + (pageHeight - contentTop - metrics.buttonHintsHeight) / 2;
 
   const char* phaseDesc = "";
   switch (scanPhase) {
-    case 0: phaseDesc = "Phase 1/3: WiFi Cameras...";    break;
-    case 1: phaseDesc = "Phase 2/3: Hidden AP Check..."; break;
-    case 2: phaseDesc = "Phase 3/3: BLE Scan...";        break;
-    default: phaseDesc = "Scanning...";                  break;
+    case 0:
+      phaseDesc = "Phase 1/3: WiFi Cameras...";
+      break;
+    case 1:
+      phaseDesc = "Phase 2/3: Hidden AP Check...";
+      break;
+    case 2:
+      phaseDesc = "Phase 3/3: BLE Scan...";
+      break;
+    default:
+      phaseDesc = "Scanning...";
+      break;
   }
 
   renderer.drawCenteredText(UI_10_FONT_ID, centerY - 20, phaseDesc, true, EpdFontFamily::BOLD);
@@ -369,18 +370,16 @@ void SweepActivity::renderResults() const {
 
   const int totalThreats = trackersFound + suspiciousCams + rogueAps + skimmers;
   char subtitle[48];
-  snprintf(subtitle, sizeof(subtitle), "%d threat%s found",
-           totalThreats, totalThreats == 1 ? "" : "s");
+  snprintf(subtitle, sizeof(subtitle), "%d threat%s found", totalThreats, totalThreats == 1 ? "" : "s");
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Sweep Complete", subtitle);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Sweep Complete", subtitle);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 
   // Summary line
   char summaryBuf[80];
-  snprintf(summaryBuf, sizeof(summaryBuf), "Cams: %d | Hidden APs: %d | Trackers: %d | Skimmers: %d",
-           suspiciousCams, rogueAps, trackersFound, skimmers);
+  snprintf(summaryBuf, sizeof(summaryBuf), "Cams: %d | Hidden APs: %d | Trackers: %d | Skimmers: %d", suspiciousCams,
+           rogueAps, trackersFound, skimmers);
 
   const int summaryH = renderer.getLineHeight(SMALL_FONT_ID) + 6;
   renderer.drawText(SMALL_FONT_ID, 8, contentTop + 4, summaryBuf);
@@ -394,16 +393,16 @@ void SweepActivity::renderResults() const {
   } else {
     const int count = static_cast<int>(findings.size());
     GUI.drawList(
-        renderer, Rect{0, listTop, pageWidth, listH},
-        count, findingIndex,
-        [this](int i) -> std::string {
-          return findings[i].description;
-        },
+        renderer, Rect{0, listTop, pageWidth, listH}, count, findingIndex,
+        [this](int i) -> std::string { return findings[i].description; },
         [this](int i) -> std::string {
           switch (findings[i].severity) {
-            case 2: return "CRITICAL";
-            case 1: return "WARNING";
-            default: return "INFO";
+            case 2:
+              return "CRITICAL";
+            case 1:
+              return "WARNING";
+            default:
+              return "INFO";
           }
         });
   }

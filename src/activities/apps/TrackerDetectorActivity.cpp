@@ -1,10 +1,8 @@
 #include "TrackerDetectorActivity.h"
 
-#include <BLEAdvertisedDevice.h>
-#include <BLEDevice.h>
-#include <BLEScan.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <NimBLEDevice.h>
 
 #include <algorithm>
 
@@ -28,7 +26,7 @@ void TrackerDetectorActivity::onEnter() {
 void TrackerDetectorActivity::onExit() {
   Activity::onExit();
   if (scanInitialized) {
-    BLEScan* scan = BLEDevice::getScan();
+    NimBLEScan* scan = NimBLEDevice::getScan();
     scan->stop();
     RADIO.shutdown();
     scanInitialized = false;
@@ -49,7 +47,7 @@ void TrackerDetectorActivity::startMonitoring() {
 
 void TrackerDetectorActivity::stopMonitoring() {
   if (scanInitialized) {
-    BLEScan* scan = BLEDevice::getScan();
+    NimBLEScan* scan = NimBLEDevice::getScan();
     scan->stop();
     RADIO.shutdown();
     scanInitialized = false;
@@ -61,46 +59,43 @@ void TrackerDetectorActivity::stopMonitoring() {
 
 void TrackerDetectorActivity::runScan() {
   if (!scanInitialized) return;
-  BLEScan* scan = BLEDevice::getScan();
+  NimBLEScan* scan = NimBLEDevice::getScan();
   scan->setActiveScan(true);
   scan->setInterval(100);
   scan->setWindow(99);
   scan->clearResults();
-  scan->start(0, nullptr, true);  // non-blocking
+  scan->start(0, false, true);  // non-blocking
   lastScanTime = millis();
 }
 
 void TrackerDetectorActivity::processScanResults() {
-  BLEScan* scan = BLEDevice::getScan();
-  BLEScanResults* results = scan->getResults();
-  if (!results) return;
+  NimBLEScan* scan = NimBLEDevice::getScan();
+  NimBLEScanResults results = scan->getResults();
 
-  for (int i = 0; i < results->getCount(); i++) {
-    BLEAdvertisedDevice dev = results->getDevice(i);
-    std::string mac = dev.getAddress().toString().c_str();
+  for (int i = 0; i < results.getCount(); i++) {
+    const NimBLEAdvertisedDevice* dev = results.getDevice(i);
+    std::string mac = dev->getAddress().toString().c_str();
 
     TrackerType type = UNKNOWN_TRACKER;
-    if (dev.haveManufacturerData()) {
-      String mfRaw = dev.getManufacturerData();
-      std::string svcStr = dev.haveServiceUUID() ? std::string(dev.getServiceUUID().toString().c_str()) : "";
-      type = identifyTracker(
-          reinterpret_cast<const uint8_t*>(mfRaw.c_str()), mfRaw.length(), svcStr);
-    } else if (dev.haveServiceUUID()) {
+    if (dev->haveManufacturerData()) {
+      std::string mfRaw = dev->getManufacturerData();
+      std::string svcStr = dev->haveServiceUUID() ? dev->getServiceUUID().toString() : "";
+      type = identifyTracker(reinterpret_cast<const uint8_t*>(mfRaw.c_str()), mfRaw.length(), svcStr);
+    } else if (dev->haveServiceUUID()) {
       // Some trackers only advertise via service UUID
-      type = identifyTracker(nullptr, 0, std::string(dev.getServiceUUID().toString().c_str()));
+      type = identifyTracker(nullptr, 0, dev->getServiceUUID().toString());
     }
 
     if (type == UNKNOWN_TRACKER) continue;
 
-    auto it = std::find_if(devices.begin(), devices.end(),
-                           [&mac](const TrackedDevice& d) { return d.mac == mac; });
+    auto it = std::find_if(devices.begin(), devices.end(), [&mac](const TrackedDevice& d) { return d.mac == mac; });
 
     if (it != devices.end()) {
-      it->rssi = dev.getRSSI();
+      it->rssi = dev->getRSSI();
       it->lastSeen = millis();
       it->seenCount++;
     } else if (static_cast<int>(devices.size()) < MAX_TRACKED) {
-      devices.push_back({mac, type, static_cast<int8_t>(dev.getRSSI()), 1, millis(), millis(), false});
+      devices.push_back({mac, type, static_cast<int8_t>(dev->getRSSI()), 1, millis(), millis(), false});
     }
   }
 
@@ -124,14 +119,13 @@ void TrackerDetectorActivity::checkForFollowers() {
 
 void TrackerDetectorActivity::pruneStale() {
   const unsigned long now = millis();
-  devices.erase(
-      std::remove_if(devices.begin(), devices.end(),
-                     [now](const TrackedDevice& d) { return (now - d.lastSeen) > STALE_TIMEOUT_MS; }),
-      devices.end());
+  devices.erase(std::remove_if(devices.begin(), devices.end(),
+                               [now](const TrackedDevice& d) { return (now - d.lastSeen) > STALE_TIMEOUT_MS; }),
+                devices.end());
 }
 
-TrackerDetectorActivity::TrackerType TrackerDetectorActivity::identifyTracker(
-    const uint8_t* mfData, size_t mfLen, const std::string& svcUuids) {
+TrackerDetectorActivity::TrackerType TrackerDetectorActivity::identifyTracker(const uint8_t* mfData, size_t mfLen,
+                                                                              const std::string& svcUuids) {
   if (mfData && mfLen >= 2) {
     uint16_t companyId = mfData[0] | (mfData[1] << 8);
 
@@ -167,12 +161,18 @@ TrackerDetectorActivity::TrackerType TrackerDetectorActivity::identifyTracker(
 
 const char* TrackerDetectorActivity::trackerTypeName(TrackerType type) {
   switch (type) {
-    case APPLE_AIRTAG:     return "AirTag";
-    case APPLE_FINDMY:     return "Find My";
-    case SAMSUNG_SMARTTAG: return "SmartTag";
-    case TILE:             return "Tile";
-    case GOOGLE_FINDER:    return "Google";
-    default:               return "Unknown";
+    case APPLE_AIRTAG:
+      return "AirTag";
+    case APPLE_FINDMY:
+      return "Find My";
+    case SAMSUNG_SMARTTAG:
+      return "SmartTag";
+    case TILE:
+      return "Tile";
+    case GOOGLE_FINDER:
+      return "Google";
+    default:
+      return "Unknown";
   }
 }
 
@@ -265,9 +265,15 @@ void TrackerDetectorActivity::loop() {
 void TrackerDetectorActivity::render(RenderLock&&) {
   renderer.clearScreen();
   switch (state) {
-    case IDLE:       renderIdle();       break;
-    case MONITORING: renderMonitoring(); break;
-    case ALERT:      renderAlert();      break;
+    case IDLE:
+      renderIdle();
+      break;
+    case MONITORING:
+      renderMonitoring();
+      break;
+    case ALERT:
+      renderAlert();
+      break;
   }
   renderer.displayBuffer();
 }
@@ -277,20 +283,15 @@ void TrackerDetectorActivity::renderIdle() const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Tracker Detector");
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Tracker Detector");
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int centerY = contentTop + (pageHeight - contentTop - metrics.buttonHintsHeight) / 2;
 
-  renderer.drawCenteredText(UI_10_FONT_ID, centerY - 40,
-                            "Scans for nearby BLE trackers");
-  renderer.drawCenteredText(UI_10_FONT_ID, centerY - 10,
-                            "(AirTag, SmartTag, Tile, Google)");
-  renderer.drawCenteredText(UI_10_FONT_ID, centerY + 20,
-                            "and alerts if one follows you.");
-  renderer.drawCenteredText(SMALL_FONT_ID, centerY + 60,
-                            "Press Confirm to start monitoring.");
+  renderer.drawCenteredText(UI_10_FONT_ID, centerY - 40, "Scans for nearby BLE trackers");
+  renderer.drawCenteredText(UI_10_FONT_ID, centerY - 10, "(AirTag, SmartTag, Tile, Google)");
+  renderer.drawCenteredText(UI_10_FONT_ID, centerY + 20, "and alerts if one follows you.");
+  renderer.drawCenteredText(SMALL_FONT_ID, centerY + 60, "Press Confirm to start monitoring.");
 
   const auto labels = mappedInput.mapLabels(tr(STR_EXIT), tr(STR_START), "^", "v");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -302,43 +303,36 @@ void TrackerDetectorActivity::renderMonitoring() const {
   const auto pageHeight = renderer.getScreenHeight();
 
   if (needsBleInit) {
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                   "Tracker Detector");
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Tracker Detector");
     GUI.drawSpinner(renderer, pageWidth / 2, pageHeight / 2, "STARTING...", spinnerFrame);
     return;
   }
 
   char subtitle[64];
   unsigned long elapsed = millis() / 60000;  // minutes since boot
-  snprintf(subtitle, sizeof(subtitle), "Cycle %u | %d trackers | %lum",
-           scanCycleCount, static_cast<int>(devices.size()), elapsed);
+  snprintf(subtitle, sizeof(subtitle), "Cycle %u | %d trackers | %lum", scanCycleCount,
+           static_cast<int>(devices.size()), elapsed);
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Monitoring", subtitle);
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Monitoring", subtitle);
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
 
   if (devices.empty()) {
-    renderer.drawCenteredText(UI_10_FONT_ID, contentTop + contentHeight / 2,
-                              "No trackers detected yet...");
+    renderer.drawCenteredText(UI_10_FONT_ID, contentTop + contentHeight / 2, "No trackers detected yet...");
   } else {
     GUI.drawList(
-        renderer, Rect{0, contentTop, pageWidth, contentHeight},
-        static_cast<int>(devices.size()), selectorIndex,
+        renderer, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(devices.size()), selectorIndex,
         [this](int index) -> std::string {
           char buf[48];
-          snprintf(buf, sizeof(buf), "%s  [%s]",
-                   trackerTypeName(devices[index].type),
+          snprintf(buf, sizeof(buf), "%s  [%s]", trackerTypeName(devices[index].type),
                    devices[index].flagged ? "ALERT" : "OK");
           return buf;
         },
         [this](int index) -> std::string {
           char buf[64];
-          snprintf(buf, sizeof(buf), "%s  %ddBm  seen:%d",
-                   devices[index].mac.c_str(),
-                   static_cast<int>(devices[index].rssi),
-                   static_cast<int>(devices[index].seenCount));
+          snprintf(buf, sizeof(buf), "%s  %ddBm  seen:%d", devices[index].mac.c_str(),
+                   static_cast<int>(devices[index].rssi), static_cast<int>(devices[index].seenCount));
           return buf;
         });
   }
@@ -363,8 +357,7 @@ void TrackerDetectorActivity::renderAlert() const {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-                 "Tracker Alert!");
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Tracker Alert!");
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
 
@@ -385,22 +378,18 @@ void TrackerDetectorActivity::renderAlert() const {
 
   if (!flaggedIndices.empty()) {
     GUI.drawList(
-        renderer, Rect{0, listTop, pageWidth, contentHeight},
-        static_cast<int>(flaggedIndices.size()), selectorIndex,
+        renderer, Rect{0, listTop, pageWidth, contentHeight}, static_cast<int>(flaggedIndices.size()), selectorIndex,
         [this, &flaggedIndices](int index) -> std::string {
           int di = flaggedIndices[index];
           char buf[48];
-          snprintf(buf, sizeof(buf), "%s  %s",
-                   trackerTypeName(devices[di].type),
-                   devices[di].mac.c_str());
+          snprintf(buf, sizeof(buf), "%s  %s", trackerTypeName(devices[di].type), devices[di].mac.c_str());
           return buf;
         },
         [this, &flaggedIndices](int index) -> std::string {
           int di = flaggedIndices[index];
           char buf[64];
           unsigned long mins = (devices[di].lastSeen - devices[di].firstSeen) / 60000;
-          snprintf(buf, sizeof(buf), "Seen %d times over %lum  %ddBm",
-                   static_cast<int>(devices[di].seenCount), mins,
+          snprintf(buf, sizeof(buf), "Seen %d times over %lum  %ddBm", static_cast<int>(devices[di].seenCount), mins,
                    static_cast<int>(devices[di].rssi));
           return buf;
         });

@@ -1,5 +1,8 @@
 #include "Logging.h"
 
+#include <BoardConfig.h>
+#include <esp_rom_sys.h>
+
 #include <string>
 
 #define MAX_ENTRY_LEN 256
@@ -38,41 +41,36 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
   va_start(args, format);
   char buf[MAX_ENTRY_LEN];
   char* c = buf;
-  // add the timestamp
+  // add timestamp, level and origin
   {
     unsigned long ms = millis();
-    int len = snprintf(c, sizeof(buf), "[%lu] ", ms);
+    int len = snprintf(c, sizeof(buf), "[%lu] [%s] [%s] ", ms, level, origin);
+    // error while writing => return
     if (len < 0) {
-      return;  // encoding error, skip logging
+      va_end(args);
+      return;
     }
-    c += len;
-  }
-  // add the level
-  {
-    const char* p = level;
-    size_t remaining = sizeof(buf) - (c - buf);
-    while (*p && remaining > 1) {
-      *c++ = *p++;
-      remaining--;
-    }
-    if (remaining > 1) {
-      *c++ = ' ';
-    }
-  }
-  // add the origin
-  {
-    int len = snprintf(c, sizeof(buf) - (c - buf), "[%s] ", origin);
-    if (len < 0) {
-      return;  // encoding error, skip logging
-    }
-    c += len;
+    // clamp c to be in buffer range
+    c += std::min(len, MAX_ENTRY_LEN);
   }
   // add the user message
-  vsnprintf(c, sizeof(buf) - (c - buf), format, args);
-  va_end(args);
-  if (logSerial) {
-    logSerial.print(buf);
+  {
+    int len = vsnprintf(c, sizeof(buf) - (c - buf), format, args);
+    if (len < 0) {
+      va_end(args);
+      return;
+    }
   }
+  va_end(args);
+#if FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF
+  // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
+  esp_rom_printf("%s", buf);
+#else
+  // Write even when `logSerial` reports disconnected: after a brief SOF-watchdog flap
+  // (common at the 10 MHz low-power clock) HWCDC keeps `connected` false until its next
+  // TX interrupt. write() queues without blocking in that state and re-arms that interrupt.
+  logSerial.print(buf);
+#endif
   addToLogRingBuffer(buf);
 }
 

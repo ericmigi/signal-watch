@@ -17,7 +17,7 @@ constexpr uint16_t HostScannerActivity::COMMON_PORTS[];
 
 std::string HostScannerActivity::ipToString(uint32_t ip) const {
   char buf[16];
-  snprintf(buf, sizeof(buf), "%d.%d.%d.%d", ip & 0xFF, (ip >> 8) & 0xFF, (ip >> 16) & 0xFF, (ip >> 24) & 0xFF);
+  snprintf(buf, sizeof(buf), "%u.%u.%u.%u", ip & 0xFF, (ip >> 8) & 0xFF, (ip >> 16) & 0xFF, (ip >> 24) & 0xFF);
   return buf;
 }
 
@@ -46,9 +46,7 @@ void HostScannerActivity::startHostScan() {
   hosts.clear();
   scanProgress = 0;
 
-  uint32_t localIp = WiFi.localIP();
   uint32_t mask = WiFi.subnetMask();
-  uint32_t network = localIp & mask;
   scanTotal = (~mask & 0xFF) - 1;  // Number of host addresses
   if (scanTotal > 254) scanTotal = 254;
 }
@@ -219,8 +217,8 @@ void HostScannerActivity::render(RenderLock&&) {
   }
 
   if (state == SCANNING_HOSTS) {
-    std::string progress = tr(STR_SCANNING_HOSTS) + std::string(" ") + std::to_string(scanProgress) + "/" +
-                           std::to_string(scanTotal);
+    std::string progress =
+        tr(STR_SCANNING_HOSTS) + std::string(" ") + std::to_string(scanProgress) + "/" + std::to_string(scanTotal);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 20, progress.c_str());
     std::string found = std::to_string(hosts.size()) + " hosts found";
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 20, found.c_str());
@@ -231,8 +229,7 @@ void HostScannerActivity::render(RenderLock&&) {
   if (state == PORT_SCANNING) {
     std::string ip = ipToString(hosts[selectedHost].ip);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 40, ip.c_str(), true, EpdFontFamily::BOLD);
-    std::string progress =
-        "Port " + std::to_string(portScanProgress) + "/" + std::to_string(NUM_PORTS);
+    std::string progress = "Port " + std::to_string(portScanProgress) + "/" + std::to_string(NUM_PORTS);
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, progress.c_str());
     std::string open = std::to_string(hosts[selectedHost].openPorts.size()) + " open";
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 40, open.c_str());
