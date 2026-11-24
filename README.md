@@ -66,6 +66,17 @@ All apps in Recon are read-only — they listen but never transmit.
 | Signal Locator | Estimate AP position via RSSI triangulation |
 | Deauth Detector | Monitor for deauthentication frame spikes |
 | Flock-You | Detect Flock Safety cameras from their WiFi traffic |
+| Signal Watch | Signature library (364 radio types), BLE pairing and WiFi beacon floods, Remote ID drones and swarms, trackers separated from their owner, evil twins of trusted networks. Logs to `/biscuit/signalwatch/`. Based on [Fieldwatch](https://github.com/OffGridPete/Fieldwatch) (MIT) |
+
+Signal Watch (simulator screenshots):
+
+<p>
+<img src="docs/images/signal-watch/live.png" width="160" alt="Live list with signature matches">
+<img src="docs/images/signal-watch/alerts.png" width="160" alt="Alerts tab">
+<img src="docs/images/signal-watch/drones.png" width="160" alt="Remote ID drones with pilot distance">
+<img src="docs/images/signal-watch/networks.png" width="160" alt="Networks tab with a trusted network">
+<img src="docs/images/signal-watch/alert-evil-twin.png" width="160" alt="Evil twin warning for a trusted network">
+</p>
 
 ### Offense — active wireless testing
 

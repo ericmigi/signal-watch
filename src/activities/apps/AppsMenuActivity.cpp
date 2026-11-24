@@ -30,6 +30,7 @@
 #include "CrowdDensityActivity.h"
 #include "DeadDropActivity.h"
 #include "DeauthDetectorActivity.h"
+#include "FieldwatchActivity.h"
 #include "FlockYouActivity.h"
 #include "DeviceFingerprinterActivity.h"
 #include "DeviceInfoActivity.h"
@@ -119,7 +120,7 @@
 
 // Radar home node table — kept in flash (.rodata) as constexpr.
 static constexpr RadarNode kRadarNodes[8] = {
-    {"RECON", 14}, {"OFFENSE", 20}, {"DEFENSE", 11}, {"COMMS", 5},
+    {"RECON", 15}, {"OFFENSE", 20}, {"DEFENSE", 11}, {"COMMS", 5},
     {"TOOLS", 37}, {"GAMES", 11},   {"READER", 5},   {"SETTINGS", 6},
 };
 
@@ -194,6 +195,8 @@ void AppsMenuActivity::loop() {
                [](GfxRenderer& r, MappedInputManager& m) { return std::make_unique<DeauthDetectorActivity>(r, m); }},
               {"Flock-You", "Detect Flock Safety cameras (passive)", UIIcon::Wifi,
                [](GfxRenderer& r, MappedInputManager& m) { return std::make_unique<FlockYouActivity>(r, m); }},
+              {"Signal Watch", "Signatures, floods, drones, trackers, evil twins", UIIcon::Wifi,
+               [](GfxRenderer& r, MappedInputManager& m) { return std::make_unique<FieldwatchActivity>(r, m); }},
           };
           app = std::make_unique<AppCategoryActivity>(renderer, mappedInput, "Recon", std::move(e), true, 0);
           break;
@@ -515,6 +518,8 @@ void AppsMenuActivity::loop() {
              [](GfxRenderer& r, MappedInputManager& m) { return std::make_unique<DeauthDetectorActivity>(r, m); }},
             {"Flock-You", "Detect Flock Safety cameras (passive)", UIIcon::Wifi,
              [](GfxRenderer& r, MappedInputManager& m) { return std::make_unique<FlockYouActivity>(r, m); }},
+            {"Signal Watch", "Signatures, floods, drones, trackers, evil twins", UIIcon::Wifi,
+             [](GfxRenderer& r, MappedInputManager& m) { return std::make_unique<FieldwatchActivity>(r, m); }},
         };
         app = std::make_unique<AppCategoryActivity>(renderer, mappedInput, "Recon", std::move(e), true, 0);
         break;
@@ -912,7 +917,7 @@ void AppsMenuActivity::drawTile(int index, int x, int y, int w, int h, bool sele
     case 0:
       name = "RECON";
       subtitle = "Scan & monitor";
-      appCount = 14;
+      appCount = 15;
       icon = RadarIcon;
       break;
     case 1:

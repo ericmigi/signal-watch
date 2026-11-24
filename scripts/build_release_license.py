@@ -119,6 +119,10 @@ def build_license(environment: str, repository: str, packages_dir: Path) -> str:
     ):
         text += section(f"FreeInk SDK/{filename}", (sdk / filename).read_text())
     text += section(
+        "Fieldwatch detection rules and signature catalog (lib/Fieldwatch)",
+        (PROJECT_DIR / "lib/Fieldwatch/LICENSE").read_text(),
+    )
+    text += section(
         "FreeType credit",
         "This software is based in part on the work of the FreeType Team.",
     )
