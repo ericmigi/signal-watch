@@ -926,6 +926,15 @@ void loop() {
         uint8_t* buf = display.getFrameBuffer();
         logSerial.write(buf, bufferSize);
         logSerial.printf("SCREENSHOT_END\n");
+      } else if (cmd.startsWith("KEY:")) {
+        // Same click path as a Bluetooth page turner: lets a USB host drive the UI for testing.
+        const String key = cmd.substring(4);
+        const RemoteButton button = key == "CONFIRM" ? RemoteButton::Confirm
+                                    : key == "BACK"  ? RemoteButton::Back
+                                    : key == "NEXT"  ? RemoteButton::Next
+                                    : key == "PREV"  ? RemoteButton::Previous
+                                                     : RemoteButton::None;
+        logSerial.printf("KEY %s %s\n", key.c_str(), mappedInputManager.injectRemoteClick(button) ? "ok" : "ignored");
       }
     }
   }
@@ -933,7 +942,7 @@ void loop() {
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      remoteActed || activityManager.preventAutoSleep()) {
+      remoteActed || mappedInputManager.hasRemoteClick() || activityManager.preventAutoSleep()) {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
